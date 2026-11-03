@@ -5,6 +5,7 @@ import {
   PERMISSION_GROUPS,
   PERMISSION_LABELS,
   hasPermission,
+  isValidGrant,
   pageViewPermission,
   resolvePermissions,
 } from "./permissions";
@@ -66,6 +67,57 @@ describe("resolvePermissions", () => {
   it("never grants more than the catalog defines", () => {
     for (const key of resolvePermissions(["*", "users.*", "roles.manage", "bogus"])) {
       expect(ALL_PERMISSION_KEYS).toContain(key);
+    }
+  });
+});
+
+describe("isValidGrant", () => {
+  it("accepts the global wildcard", () => {
+    expect(isValidGrant("*")).toBe(true);
+  });
+
+  it("accepts a wildcard for every resource the catalog defines", () => {
+    for (const group of PERMISSION_GROUPS) {
+      expect(isValidGrant(`${group.resource}.*`), `${group.resource}.*`).toBe(true);
+    }
+  });
+
+  it("accepts every concrete catalog key", () => {
+    for (const key of ALL_PERMISSION_KEYS) {
+      expect(isValidGrant(key), key).toBe(true);
+    }
+  });
+
+  it("rejects unknown concrete keys", () => {
+    expect(isValidGrant("banana.peel")).toBe(false);
+    expect(isValidGrant("users.nope")).toBe(false);
+    expect(isValidGrant("retired.thing")).toBe(false);
+  });
+
+  it("rejects wildcards for resources the catalog does not define", () => {
+    expect(isValidGrant("foo.*")).toBe(false);
+    expect(isValidGrant(".*")).toBe(false);
+  });
+
+  it("rejects malformed entries", () => {
+    expect(isValidGrant("")).toBe(false);
+    expect(isValidGrant("*.*")).toBe(false);
+    expect(isValidGrant("*.view")).toBe(false);
+    expect(isValidGrant("users")).toBe(false);
+    expect(isValidGrant("users.")).toBe(false);
+    expect(isValidGrant(".view")).toBe(false);
+    expect(isValidGrant(" users.view ")).toBe(false);
+    expect(isValidGrant("USERS.VIEW")).toBe(false);
+  });
+
+  it("agrees with the resolver: every accepted grant resolves to something", () => {
+    const accepted = ["*", "users.*", "roles.manage"];
+    for (const grant of accepted) {
+      expect(resolvePermissions([grant]).length, grant).toBeGreaterThan(0);
+    }
+    // And every rejected grant resolves to nothing on its own.
+    for (const grant of ["banana.peel", "foo.*", "*.view"]) {
+      expect(resolvePermissions([grant]), grant).toEqual([]);
     }
   });
 });

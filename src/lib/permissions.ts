@@ -133,6 +133,27 @@ export function resolvePermissions(granted: readonly string[]): string[] {
   return ALL_PERMISSION_KEYS.filter((key) => wanted.has(key));
 }
 
+/**
+ * May a role row store this grant? The write-time counterpart of
+ * resolvePermissions: the resolver silently drops dead grants (stale data must
+ * stay inert), while this rejects them at the API boundary so new dead grants
+ * can never be written.
+ *
+ * True for exactly the three grant shapes the resolver understands:
+ *   1. `"*"`
+ *   2. `"<resource>.*"` with a resource the catalog defines
+ *   3. a concrete member of ALL_PERMISSION_KEYS
+ *
+ * Everything else — unknown concrete keys, unknown-resource wildcards,
+ * malformed strings — is false. Driven by PERMISSION_GROUPS/ALL_PERMISSION_KEYS,
+ * so a future catalog entry is automatically assignable with no route change.
+ */
+export function isValidGrant(entry: string): boolean {
+  if (entry === "*") return true;
+  if (entry.endsWith(".*")) return GROUP_BY_RESOURCE.has(entry.slice(0, -2));
+  return KEY_SET.has(entry);
+}
+
 /** Membership test against an already-resolved list. */
 export function hasPermission(resolved: readonly string[], required: string): boolean {
   return resolved.includes(required);
