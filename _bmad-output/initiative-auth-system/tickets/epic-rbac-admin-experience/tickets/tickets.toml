@@ -1,0 +1,50 @@
+# epic-rbac-admin-experience — stories in build order. `id` is permanent.
+# Client gating first (the epic's tracer-equivalent: the provider crosses every
+# UI layer this epic touches); then /roles, then /permissions (cross-links land
+# with the page that completes each direction); verify sweep last.
+
+[[entry]]
+id = 1
+type = "story"
+title = "Client gating: PermissionProvider, usePermission, filtered nav, in-app 403"
+description = "The thinnest path through every UI layer this epic touches: new permission-provider.tsx (fetches /api/auth/me, exposes user/permissions/can/status, re-fetch on window focus) mounted in DashboardShell wrapping AppSidebar, DashboardContent and CommandPalette; PagePermissionGate + forbidden-view.tsx (mirrors not-found-view: 403 tag, ask-admin copy naming the permission label, Dashboard link); sidebar filtering (workspace nav, admin nav, whole Watching section under watching.view, header Ask AI link under ask-ai.view); command-palette filtering; every existing page view wrapped with its view key (home, users, ask-ai, agent-board, watching). No new nav entries yet — roles/permissions entries land with their pages. R5's whole share except the two admin pages' own gating."
+verify = "Signed in as Member: no Users entry in sidebar or command palette, Watching section present, Ask AI link present; deep link to /users renders the 403 view inside the dashboard chrome with the users view never mounting (no API call); as Admin every entry renders; with the no-grants custom-role fixture every page 403s and the Watching section hides; a grant revoked server-side reflects in the UI after window focus with no re-login; build and vitest green."
+covers = ["R5"]
+after = []
+hitl = false
+risk = "high"
+plan_checkpoint = true
+
+[[entry]]
+id = 2
+type = "story"
+title = "Roles master page /roles + users-view role-source switch"
+description = "navigation.ts ADMIN_PAGES gains roles (href /roles) gated by roles.view; RSC page loads roles + userCount via query() directly for first paint; RolesView client island: table (key mono, name, description, # users, system badge, permission count), create/edit drawer with permission toggles grouped by PERMISSION_GROUPS (labels from PERMISSION_LABELS), wildcard roles show an All-permissions state whose Customize expands the wildcard to the concrete set (full-set replace), duplicate button prefills the create drawer with the source's resolved grants, delete surfaces the API's blocks (system: cannot-delete state; in-use: userCount + reassign guidance; free: deletes) and every mutation calls the epic-1 API; users-view's ROLE_OPTIONS deleted — AddUserDialog reads role options from GET /api/roles (custom roles included); ?role=<key> opens that role's drawer on load."
+verify = "As Admin /roles lists every role with userCount and badges; create with toggled grants saves and a role_audit row appears; rename in the drawer sticks; duplicate prefills resolved grants under a new name; system-role delete is visibly blocked, in-use shows the count + guidance, a free role deletes; a wildcard role shows All permissions and Customize expands it; AddUserDialog offers exactly the API's roles; ?role=<key> opens the drawer; as Member /roles 403s and the nav entry is hidden."
+covers = ["R6"]
+after = [1]
+hitl = false
+risk = "high"
+plan_checkpoint = true
+
+[[entry]]
+id = 3
+type = "story"
+title = "Permissions matrix /permissions with per-column save and cross-links"
+description = "navigation.ts gains permissions (href /permissions) gated by roles.view; MatrixView client island fed by GET /api/roles: rows grouped by PERMISSION_GROUPS (group label row + verb sub-rows), columns = roles, cells show the role's resolved state, sticky header row and sticky first column; a column goes dirty on any toggle and its Save issues PATCH /api/roles/[key]/permissions with the full set then refetches; columns whose raw grants hold a wildcard render read-only with a lock icon pointing to the role drawer; collapses to stacked per-role editors on small screens; empty custom-role state links to /roles; cross-links both directions: /permissions?role=<key> scrolls to and highlights the column, matrix column header links to /roles?role=<key>, and /roles' drawer gains an Edit-in-matrix link."
+verify = "As Admin /permissions renders the grouped matrix with sticky header and first column; toggling a custom role's cells marks the column dirty, Save persists via the replace API and the state survives refetch; a wildcard column is read-only with the lock hint; ?role=<key> highlights the column; the column header opens /roles?role=<key> with the drawer open and the drawer's matrix link round-trips; small viewport stacks per-role editors; with no custom roles the empty state invites /roles; as Member the page 403s and the nav entry is hidden."
+covers = ["R6"]
+after = [2]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 4
+type = "story"
+title = "Verify sweep: per-seeded-role pass + cleanup scoped from plans and reviews"
+description = "Cleanup only, scoped at start from the plans and review findings this epic defers (e.g. shared roles-fetch/toast helpers between RolesView and MatrixView); a behavior fix found here opens a new story, not swept in. Plus the epic's closing verification matrix: for Admin, Editor, Member and one custom role, walk sidebar, palette, Watching, deep links and both admin pages and record that each surface renders exactly what that role permits."
+verify = "Per seeded role the sidebar, command palette and Watching section render exactly the permitted entries; every forbidden deep link shows the in-app 403 and never data; lint, build and the full vitest suite pass; no TODO or deferred markers left from entries 1-3."
+covers = ["R5", "R6"]
+after = [1, 2, 3]
+hitl = false
+risk = "low"

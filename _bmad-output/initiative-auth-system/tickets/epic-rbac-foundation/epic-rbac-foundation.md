@@ -8,6 +8,7 @@ companions: ["_bmad-output/initiative-auth-system/brainstorm-rbac-roles-permissi
 after: []
 risk: medium
 refined: true
+status: done
 ---
 
 # RBAC foundation: catalog, schema, API guards
