@@ -15,6 +15,7 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 import { FilterMenu, type FilterValue } from "@/components/ui/filter-menu-clean";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { apiFetch } from "@/lib/api";
 
 type DirectoryUser = {
   id: string;
@@ -44,7 +45,7 @@ export function UsersView() {
   const [users, setUsers] = useState<DirectoryUser[]>([]);
 
   const loadUsers = useCallback(() => {
-    fetch("/api/users")
+    apiFetch("/api/users")
       .then(res => (res.ok ? res.json() : null))
       .then(data => { if (data?.users) setUsers(data.users); })
       .catch(() => { /* keep the previous list on transient network errors */ });
@@ -169,7 +170,7 @@ function AddUserDialog({
     event.preventDefault();
     setSaving(true);
     try {
-      const res = await fetch("/api/users", {
+      const res = await apiFetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password, role, team }),

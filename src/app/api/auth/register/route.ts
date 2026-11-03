@@ -1,9 +1,8 @@
 import { NextRequest } from "next/server";
 import {
   hashPassword,
-  createSession,
+  issueTokenPair,
   isValidEmail,
-  newUserId,
   toSessionUser,
   type UserRow,
 } from "@/lib/auth";
@@ -40,26 +39,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // The very first account becomes the Admin.
+    // The very first account becomes the Admin. The id is a DB-generated UUID.
     const countResult = await query(`SELECT count(*)::int AS count FROM users`);
     const isFirstUser = countResult.rows[0].count === 0;
 
     const result = await query<UserRow>(
-      `INSERT INTO users (id, name, email, password_hash, role, team, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'Active')
+      `INSERT INTO users (name, email, password_hash, role, team, status)
+       VALUES ($1, $2, $3, $4, $5, 'Active')
        RETURNING id, name, email, password_hash, role, team, status, created_at`,
-      [
-        newUserId(),
-        name,
-        email,
-        hashPassword(password),
-        isFirstUser ? "Admin" : "Member",
-        "General",
-      ]
+      [name, email, await hashPassword(password), isFirstUser ? "Admin" : "Member", "General"]
     );
     const user = toSessionUser(result.rows[0]);
 
-    await createSession(user.id);
+    await issueTokenPair(user);
     return Response.json({ user }, { status: 201 });
   } catch (error) {
     console.error("register failed:", error);

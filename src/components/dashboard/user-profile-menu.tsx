@@ -14,6 +14,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button-clean";
 import { Sparkles, LogOut } from "@/components/icons";
+import { apiFetch } from "@/lib/api";
 
 interface UserProfileMenuProps {
   isCollapsed?: boolean;
@@ -41,7 +42,7 @@ export function UserProfileMenu({ isCollapsed = false, onOpenCommand }: UserProf
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/auth/me")
+    apiFetch("/api/auth/me")
       .then(res => (res.ok ? res.json() : null))
       .then(data => {
         if (!cancelled && data?.user) setAccount({ name: data.user.name, email: data.user.email });

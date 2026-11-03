@@ -1,8 +1,9 @@
-import { destroySession } from "@/lib/auth";
+import { clearAuthCookies, revokeRefreshTokenOnLogout } from "@/lib/auth";
 
 export async function POST() {
   try {
-    await destroySession();
+    await revokeRefreshTokenOnLogout();
+    await clearAuthCookies();
     return Response.json({ ok: true });
   } catch (error) {
     console.error("logout failed:", error);

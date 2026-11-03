@@ -3,7 +3,6 @@ import {
   getSessionUser,
   hashPassword,
   isValidEmail,
-  newUserId,
   toSessionUser,
   type UserRow,
 } from "@/lib/auth";
@@ -92,11 +91,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // The id is a DB-generated UUID (gen_random_uuid()).
     const result = await query<UserRow>(
-      `INSERT INTO users (id, name, email, password_hash, role, team, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'Active')
+      `INSERT INTO users (name, email, password_hash, role, team, status)
+       VALUES ($1, $2, $3, $4, $5, 'Active')
        RETURNING id, name, email, password_hash, role, team, status, created_at`,
-      [newUserId(), name, email, hashPassword(password), role, team]
+      [name, email, await hashPassword(password), role, team]
     );
 
     const users = await listDirectoryUsers();

@@ -1,5 +1,11 @@
 import { NextRequest } from "next/server";
-import { createSession, toSessionUser, verifyPassword, type UserRow } from "@/lib/auth";
+import {
+  issueTokenPair,
+  toSessionUser,
+  verifyDummyPassword,
+  verifyPassword,
+  type UserRow,
+} from "@/lib/auth";
 import { query } from "@/lib/db";
 
 export async function POST(request: NextRequest) {
@@ -19,7 +25,15 @@ export async function POST(request: NextRequest) {
     );
     const row = result.rows[0];
 
-    if (!row || !verifyPassword(password, row.password_hash)) {
+    if (!row) {
+      // Unknown email: still run a bcrypt compare against the dummy hash so the
+      // response time matches the known-email path (timing-safe).
+      await verifyDummyPassword(password);
+      return Response.json({ error: "Invalid email or password" }, { status: 401 });
+    }
+
+    const passwordMatches = await verifyPassword(password, row.password_hash);
+    if (!passwordMatches) {
       return Response.json({ error: "Invalid email or password" }, { status: 401 });
     }
     if (row.status !== "Active") {
@@ -29,7 +43,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await createSession(row.id);
+    await issueTokenPair(toSessionUser(row));
     return Response.json({ user: toSessionUser(row) });
   } catch (error) {
     console.error("login failed:", error);
