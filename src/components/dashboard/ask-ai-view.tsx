@@ -6,6 +6,7 @@ import {
   Plus, ConnectIcon, Folder, X, Users, Sliders,
 } from "@/components/icons";
 import { Button } from "@/components/ui/button-clean";
+import { usePermission } from "./permission-provider";
 import { MatrixLoader, ThinkingState, ReasoningStream, StreamingText } from "./ask-ai-motion";
 import { getDemoResponse, MarkdownRenderer } from "./ask-ai-content";
 import "./ask-ai.css";
@@ -108,6 +109,8 @@ function MessageActions({ content, disabled, onRegenerate }: {
 }
 
 export function AskAIView() {
+  const { can } = usePermission();
+  const canUseAskAi = can("ask-ai.use");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -180,7 +183,7 @@ export function AskAIView() {
 
   const handleSend = useCallback((prompt?: string) => {
     const text = (prompt ?? input).trim();
-    if (!text || processingRef.current) return;
+    if (!canUseAskAi || !text || processingRef.current) return;
     processingRef.current = true;
     followRef.current = true;
     setIsProcessing(true);
@@ -192,7 +195,7 @@ export function AskAIView() {
     setAttachment(null);
     setFileError("");
     simulateResponse(text, attachment?.text);
-  }, [input, attachment, simulateResponse]);
+  }, [input, attachment, simulateResponse, canUseAskAi]);
 
   const handleProgress = useCallback((id: string, content: string) => {
     streamRef.current = { id, content };
@@ -220,7 +223,7 @@ export function AskAIView() {
   }, [clearRun]);
 
   const handleRegenerate = (id: string) => {
-    if (processingRef.current) return;
+    if (!canUseAskAi || processingRef.current) return;
     const index = messages.findIndex(message => message.id === id);
     const user = messages.slice(0, index).findLast(message => message.role === "user");
     if (!user) return;
@@ -257,7 +260,7 @@ export function AskAIView() {
               <p>One conversation. A little less busywork.</p>
               <div className="ask-ai-suggestions">
                 {SUGGESTED_PROMPTS.map(prompt => (
-                  <Button key={prompt} variant="ghost" size="sm" onClick={() => handleSend(prompt)}>{prompt}</Button>
+                  <Button key={prompt} variant="ghost" size="sm" disabled={!canUseAskAi} onClick={() => handleSend(prompt)}>{prompt}</Button>
                 ))}
               </div>
             </div>
@@ -298,7 +301,7 @@ export function AskAIView() {
                       {AGENTS.filter(agent => activeAgent === `${message.id}-${agent.name}`).map(agent => <p className="ask-ai-agent-detail" key={agent.name}>{agent.detail} No live agent was run.</p>)}
                     </div>
                   </div>
-                  <MessageActions content={message.content} disabled={isProcessing} onRegenerate={() => handleRegenerate(message.id)} />
+                  <MessageActions content={message.content} disabled={isProcessing || !canUseAskAi} onRegenerate={() => handleRegenerate(message.id)} />
                 </>
               )}
             </article>
@@ -333,7 +336,7 @@ export function AskAIView() {
                   {isProcessing ? (
                     <Button variant="ghost" size="sm" className="ask-ai-send" aria-label="Stop response" onClick={handleStop} icon={<span className="ask-ai-stop-icon" />} />
                   ) : (
-                    <Button variant="primary" size="sm" className="ask-ai-send" aria-label="Send message" disabled={!input.trim()} onClick={() => handleSend()} icon={<ArrowUp className="size-4" />} />
+                    <Button variant="primary" size="sm" className="ask-ai-send" aria-label="Send message" disabled={!canUseAskAi || !input.trim()} onClick={() => handleSend()} icon={<ArrowUp className="size-4" />} />
                   )}
                 </div>
               </div>
@@ -363,6 +366,7 @@ export function AskAIView() {
             }}
           />
           {fileError && <p className="ask-ai-file-error" role="alert">{fileError}</p>}
+          {!canUseAskAi && <p className="ask-ai-file-error">Sending is disabled — your role is missing the Use Ask AI permission.</p>}
           <p className="ask-ai-disclaimer" id="ask-ai-disclaimer">Sample data only. Activity and agent states are simulated.</p>
         </div>
       </div>

@@ -9,10 +9,12 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from "@/co
 import { AppSidebar } from "./app-sidebar";
 import { CommandPalette } from "./command-palette";
 import { ThemeToggle } from "./theme-toggle";
+import { PermissionProvider, usePermission } from "./permission-provider";
 import { ALL_PAGES, workspaceHref, type WorkspaceRoute } from "./navigation";
 
 function DashboardContent({ route, children }: { route: WorkspaceRoute; children: ReactNode }) {
   const { open, isMobile } = useSidebar();
+  const { can } = usePermission();
   const showTrigger = !open || isMobile;
   const current = ALL_PAGES.find(page => page.id === route) ?? { label: "Watching", icon: Users };
   const CurrentIcon = current.icon;
@@ -40,10 +42,12 @@ function DashboardContent({ route, children }: { route: WorkspaceRoute; children
         </div>
         <div className="flex items-center gap-2.5">
           <ThemeToggle />
-          <Link href="/ask-ai" className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#f4f4f5] dark:bg-neutral-800/80 px-3 text-[12.5px] font-medium text-neutral-800 dark:text-neutral-200 hover:bg-[#eaeaea] dark:hover:bg-neutral-700 transition-colors">
-            <Wand2 className="size-3.5" />
-            <span>Ask AI</span>
-          </Link>
+          {can("ask-ai.view") && (
+            <Link href="/ask-ai" className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#f4f4f5] dark:bg-neutral-800/80 px-3 text-[12.5px] font-medium text-neutral-800 dark:text-neutral-200 hover:bg-[#eaeaea] dark:hover:bg-neutral-700 transition-colors">
+              <Wand2 className="size-3.5" />
+              <span>Ask AI</span>
+            </Link>
+          )}
         </div>
       </header>
       <main className={route === "ask-ai"
@@ -66,10 +70,12 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <SidebarProvider defaultOpen className="flex h-dvh w-full overflow-hidden bg-[#f5f5f5] dark:bg-[#09090b]">
-      <AppSidebar currentRoute={route} onNavigate={handleNavigate} onOpenCommand={() => setIsCommandOpen(true)} />
-      <DashboardContent route={route}>{children}</DashboardContent>
-      <CommandPalette open={isCommandOpen} onOpenChange={setIsCommandOpen} onNavigate={handleNavigate} />
-    </SidebarProvider>
+    <PermissionProvider>
+      <SidebarProvider defaultOpen className="flex h-dvh w-full overflow-hidden bg-[#f5f5f5] dark:bg-[#09090b]">
+        <AppSidebar currentRoute={route} onNavigate={handleNavigate} onOpenCommand={() => setIsCommandOpen(true)} />
+        <DashboardContent route={route}>{children}</DashboardContent>
+        <CommandPalette open={isCommandOpen} onOpenChange={setIsCommandOpen} onNavigate={handleNavigate} />
+      </SidebarProvider>
+    </PermissionProvider>
   );
 }
