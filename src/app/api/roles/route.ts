@@ -1,59 +1,16 @@
 import { NextRequest } from "next/server";
 import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/permission-guard";
-import { isValidGrant, resolvePermissions } from "@/lib/permissions";
+import { isValidGrant } from "@/lib/permissions";
+import { toRoleResponse, writeRoleAudit, type RoleResponse, type RoleRow } from "@/lib/roles";
 
-/** Row shape of the roles × users aggregate. pg delivers the JSONB permissions
- *  column already parsed into a JS value (array — or anything, if the JSONB is
- *  malformed), so it is typed unknown and filtered defensively below. */
-interface RoleRow {
-  key: string;
-  name: string;
-  description: string;
-  permissions: unknown;
-  is_system: boolean;
-  created_at: Date;
+/** The roles × users aggregate row: a RoleRow plus the LEFT JOIN's user count. */
+interface RoleListRow extends RoleRow {
   user_count: number;
 }
 
-/** The role shape shared by GET list items and POST's 201 body — one object so
- *  the create response can never drift from the list response. */
-interface RoleResponse {
-  key: string;
-  name: string;
-  description: string;
-  /** Raw stored grants — may contain wildcards; this is the editable state. */
-  permissions: string[];
-  /** Wildcards expanded against the catalog — what the role actually allows. */
-  resolvedPermissions: string[];
-  isSystem: boolean;
-  userCount: number;
-  createdAt: string;
-}
-
-/** JSONB is typed unknown; anything that is not a string[] degrades to []. */
-function toStringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((entry): entry is string => typeof entry === "string")
-    : [];
-}
-
-function toRoleResponse(row: Pick<RoleRow, "key" | "name" | "description" | "permissions" | "is_system" | "created_at">, userCount: number): RoleResponse {
-  const permissions = toStringArray(row.permissions);
-  return {
-    key: row.key,
-    name: row.name,
-    description: row.description,
-    permissions,
-    resolvedPermissions: resolvePermissions(permissions),
-    isSystem: row.is_system,
-    userCount,
-    createdAt: new Date(row.created_at).toISOString(),
-  };
-}
-
 async function listRoles(): Promise<RoleResponse[]> {
-  const result = await query<RoleRow>(
+  const result = await query<RoleListRow>(
     `SELECT r.key, r.name, r.description, r.permissions, r.is_system, r.created_at,
             COUNT(u.id)::int AS user_count
      FROM roles r
@@ -179,15 +136,12 @@ export async function POST(request: NextRequest) {
 
     // Audit after the mutation, sequential (not fire-and-forget) but
     // non-fatal: insurance, not a transactional participant (design §5).
-    try {
-      await query(
-        `INSERT INTO role_audit (actor_id, action, role_key, diff)
-         VALUES ($1, 'role.created', $2, $3::jsonb)`,
-        [guard.user.id, role.key, JSON.stringify({ name, permissions: grants })]
-      );
-    } catch (error) {
-      console.error("role audit write failed:", error);
-    }
+    await writeRoleAudit({
+      actorId: guard.user.id,
+      action: "role.created",
+      roleKey: role.key,
+      diff: { name, permissions: grants },
+    });
 
     return Response.json({ role }, { status: 201 });
   } catch (error) {

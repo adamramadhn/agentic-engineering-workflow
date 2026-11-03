@@ -30,6 +30,8 @@ const CATALOG_ORDER = [
 
 const USERS_KEYS = ["users.view", "users.create", "users.update", "users.delete"] as const;
 
+// --- resolvePermissions: wildcard expansion, dead-grant dropping, order ----
+
 describe("resolvePermissions", () => {
   it('expands "*" to the whole catalog, with no wildcard in the output', () => {
     const resolved = resolvePermissions(["*"]);
@@ -73,6 +75,8 @@ describe("resolvePermissions", () => {
   });
 });
 
+// --- isValidGrant: what a role row may store at the API boundary -----------
+
 describe("isValidGrant", () => {
   it("accepts the global wildcard", () => {
     expect(isValidGrant("*")).toBe(true);
@@ -91,25 +95,32 @@ describe("isValidGrant", () => {
   });
 
   it("rejects unknown concrete keys", () => {
-    expect(isValidGrant("banana.peel")).toBe(false);
-    expect(isValidGrant("users.nope")).toBe(false);
-    expect(isValidGrant("retired.thing")).toBe(false);
+    for (const grant of ["banana.peel", "users.nope", "retired.thing"]) {
+      expect(isValidGrant(grant), grant).toBe(false);
+    }
   });
 
   it("rejects wildcards for resources the catalog does not define", () => {
-    expect(isValidGrant("foo.*")).toBe(false);
-    expect(isValidGrant(".*")).toBe(false);
+    for (const grant of ["foo.*", ".*"]) {
+      expect(isValidGrant(grant), grant).toBe(false);
+    }
   });
 
   it("rejects malformed entries", () => {
-    expect(isValidGrant("")).toBe(false);
-    expect(isValidGrant("*.*")).toBe(false);
-    expect(isValidGrant("*.view")).toBe(false);
-    expect(isValidGrant("users")).toBe(false);
-    expect(isValidGrant("users.")).toBe(false);
-    expect(isValidGrant(".view")).toBe(false);
-    expect(isValidGrant(" users.view ")).toBe(false);
-    expect(isValidGrant("USERS.VIEW")).toBe(false);
+    // Empty, doubled/prefixed wildcards, missing half of resource.verb, and
+    // stray whitespace or case — none of these are catalog keys.
+    for (const grant of [
+      "",
+      "*.*",
+      "*.view",
+      "users",
+      "users.",
+      ".view",
+      " users.view ",
+      "USERS.VIEW",
+    ]) {
+      expect(isValidGrant(grant), JSON.stringify(grant)).toBe(false);
+    }
   });
 
   it("agrees with the resolver: every accepted grant resolves to something", () => {
@@ -124,6 +135,8 @@ describe("isValidGrant", () => {
   });
 });
 
+// --- hasPermission: membership over an already-resolved list ---------------
+
 describe("hasPermission", () => {
   it("is plain membership over the resolved list", () => {
     const member = resolvePermissions(["home.view", "watching.view"]);
@@ -135,6 +148,8 @@ describe("hasPermission", () => {
     expect(hasPermission([], "home.view")).toBe(false);
   });
 });
+
+// --- pageViewPermission: nav page id → its gating view key -----------------
 
 describe("pageViewPermission", () => {
   it("maps every nav page id to its own view key", () => {
@@ -155,6 +170,8 @@ describe("pageViewPermission", () => {
     expect(pageViewPermission("permissions")).toBe("roles.view");
   });
 });
+
+// --- catalog integrity: keys, groups, labels stay in sync ------------------
 
 describe("catalog integrity", () => {
   it("defines exactly the 11 v1 keys, in catalog order", () => {
@@ -201,30 +218,34 @@ describe("catalog integrity", () => {
   });
 });
 
+// --- wouldLeaveNoManageHolder: the last-admin lockout computation ----------
+
 describe("wouldLeaveNoManageHolder", () => {
   const MANAGE = "roles.manage";
 
+  /** Compact RoleGrantsUsage fixture: one role's key, stored grants, and how
+   *  many users currently hold it. */
+  const entry = (key: string, grants: readonly string[], userCount: number): RoleGrantsUsage => ({
+    key,
+    grants,
+    userCount,
+  });
+
   it("returns true when the sole holder role is stripped of manage", () => {
-    const entries: RoleGrantsUsage[] = [
-      { key: "support", grants: [MANAGE], userCount: 2 },
-      { key: "viewer", grants: ["home.view"], userCount: 5 },
-    ];
+    const entries = [entry("support", [MANAGE], 2), entry("viewer", ["home.view"], 5)];
     expect(wouldLeaveNoManageHolder(entries, "support", ["home.view"])).toBe(true);
   });
 
   it("returns false when another role still holds manage explicitly", () => {
-    const entries: RoleGrantsUsage[] = [
-      { key: "ops-a", grants: [MANAGE], userCount: 2 },
-      { key: "ops-b", grants: [MANAGE], userCount: 1 },
-    ];
+    const entries = [entry("ops-a", [MANAGE], 2), entry("ops-b", [MANAGE], 1)];
     expect(wouldLeaveNoManageHolder(entries, "ops-a", ["home.view"])).toBe(false);
   });
 
   it("returns false when another role holds manage via a wildcard (`*` or `roles.*`)", () => {
-    const entries: RoleGrantsUsage[] = [
-      { key: "ops-a", grants: [MANAGE], userCount: 2 },
-      { key: "ops-star", grants: ["*"], userCount: 1 },
-      { key: "ops-group", grants: ["roles.*"], userCount: 1 },
+    const entries = [
+      entry("ops-a", [MANAGE], 2),
+      entry("ops-star", ["*"], 1),
+      entry("ops-group", ["roles.*"], 1),
     ];
     expect(wouldLeaveNoManageHolder(entries, "ops-a", ["home.view"])).toBe(false);
     expect(wouldLeaveNoManageHolder(entries, "ops-star", ["home.view"])).toBe(false);
@@ -232,35 +253,24 @@ describe("wouldLeaveNoManageHolder", () => {
   });
 
   it("returns false when the edit adds manage to a role that has users", () => {
-    const entries: RoleGrantsUsage[] = [
-      { key: "ops", grants: [MANAGE], userCount: 0 },
-      { key: "support", grants: ["home.view"], userCount: 3 },
-    ];
+    const entries = [entry("ops", [MANAGE], 0), entry("support", ["home.view"], 3)];
     expect(wouldLeaveNoManageHolder(entries, "support", [MANAGE])).toBe(false);
   });
 
   it("returns true when the only holder role has zero users (already locked out)", () => {
-    const entries: RoleGrantsUsage[] = [
-      { key: "ops", grants: [MANAGE], userCount: 0 },
-      { key: "support", grants: ["home.view"], userCount: 2 },
-    ];
+    const entries = [entry("ops", [MANAGE], 0), entry("support", ["home.view"], 2)];
     // Editing a different role while nobody actually holds manage anywhere.
     expect(wouldLeaveNoManageHolder(entries, "support", ["users.view"])).toBe(true);
   });
 
   it("returns false when the edited role was never a holder and another role holds", () => {
-    const entries: RoleGrantsUsage[] = [
-      { key: "admin", grants: ["*"], userCount: 5 },
-      { key: "support", grants: ["home.view"], userCount: 2 },
-    ];
+    const entries = [entry("admin", ["*"], 5), entry("support", ["home.view"], 2)];
     expect(wouldLeaveNoManageHolder(entries, "support", ["users.view"])).toBe(false);
   });
 
   it("evaluates dead grants as non-holding, matching the resolver", () => {
     // A "holder" whose only manage grant is a dead key resolves to nothing.
-    const entries: RoleGrantsUsage[] = [
-      { key: "stale", grants: ["roles.manage.retired"], userCount: 4 },
-    ];
+    const entries = [entry("stale", ["roles.manage.retired"], 4)];
     expect(wouldLeaveNoManageHolder(entries, "stale", ["home.view"])).toBe(true);
   });
 });

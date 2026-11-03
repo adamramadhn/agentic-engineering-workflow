@@ -1,59 +1,8 @@
 import { NextRequest } from "next/server";
 import { query } from "@/lib/db";
 import { requirePermission } from "@/lib/permission-guard";
-import {
-  isValidGrant,
-  resolvePermissions,
-  wouldLeaveNoManageHolder,
-  type RoleGrantsUsage,
-} from "@/lib/permissions";
-
-/** Row shapes. pg delivers the JSONB permissions column already parsed into a
- *  JS value (array — or anything, if the JSONB is malformed), so it is typed
- *  unknown and filtered defensively. */
-interface RoleRow {
-  key: string;
-  name: string;
-  description: string;
-  permissions: unknown;
-  is_system: boolean;
-  created_at: Date;
-}
-
-/** The role shape 1.3's GET/POST return (minus userCount, which a grants
- *  replace never changes) — duplicated locally rather than imported across
- *  route files; the epic's entry 5 consolidates shared mapping helpers. */
-interface RoleResponse {
-  key: string;
-  name: string;
-  description: string;
-  /** Raw stored grants — may contain wildcards; this is the editable state. */
-  permissions: string[];
-  /** Wildcards expanded against the catalog — what the role actually allows. */
-  resolvedPermissions: string[];
-  isSystem: boolean;
-  createdAt: string;
-}
-
-/** JSONB is typed unknown; anything that is not a string[] degrades to []. */
-function toStringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((entry): entry is string => typeof entry === "string")
-    : [];
-}
-
-function toRoleResponse(row: RoleRow): RoleResponse {
-  const permissions = toStringArray(row.permissions);
-  return {
-    key: row.key,
-    name: row.name,
-    description: row.description,
-    permissions,
-    resolvedPermissions: resolvePermissions(permissions),
-    isSystem: row.is_system,
-    createdAt: new Date(row.created_at).toISOString(),
-  };
-}
+import { isValidGrant, wouldLeaveNoManageHolder, type RoleGrantsUsage } from "@/lib/permissions";
+import { toStringArray, toRoleResponse, writeRoleAudit, type RoleRow } from "@/lib/roles";
 
 /** Full-set grants replace: the body's array IS the new grants list (no
  *  merge protocol). Guard order is load-bearing — every check runs before any
@@ -140,19 +89,12 @@ export async function PATCH(
 
     // Audit after the mutation, sequential (not fire-and-forget) but
     // non-fatal: insurance, not a transactional participant (design §5).
-    try {
-      await query(
-        `INSERT INTO role_audit (actor_id, action, role_key, diff)
-         VALUES ($1, 'role.permissions.replaced', $2, $3::jsonb)`,
-        [
-          guard.user.id,
-          key,
-          JSON.stringify({ before: toStringArray(before.permissions), after: grants }),
-        ]
-      );
-    } catch (error) {
-      console.error("role audit write failed:", error);
-    }
+    await writeRoleAudit({
+      actorId: guard.user.id,
+      action: "role.permissions.replaced",
+      roleKey: key,
+      diff: { before: toStringArray(before.permissions), after: grants },
+    });
 
     return Response.json({ role: toRoleResponse(result.rows[0]) });
   } catch (error) {
