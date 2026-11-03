@@ -1,0 +1,59 @@
+# epic-rbac-foundation — stories in build order. `id` is permanent.
+# Tracer first (Decision 2026-11-03); entries 2 and 3 run in parallel after it.
+
+[[entry]]
+id = 1
+type = "story"
+title = "Tracer: one permission key refused end to end"
+description = "The thinnest path through every layer: the full 11-key catalog with resolver and wildcards, vitest added with the resolver unit suite, schema v3 (roles + role_audit + FK + 3 system-role seed) in ensureSchema, SessionUser.permissions joined and resolved, the me payload growing permissions, and requirePermission() applied to GET /api/users (users.view) only. R2's share: the data layer — table, JSONB grants, FK, seed; the API surface is entries 3-4's."
+verify = "Unauthenticated GET /api/users answers 401; signed in as Member (no users.view) 403; as Admin 200. Resolver unit suite green (`npx vitest run`). Against a v2-database copy, boot adds the FK and seed in place; on restart nothing re-seeds or errors."
+covers = ["R1", "R2", "R3", "R4", "R8", "R9"]
+after = []
+hitl = false
+risk = "high"
+plan_checkpoint = true
+
+[[entry]]
+id = 2
+type = "story"
+title = "Guard the remaining users routes, delete the hardcoded roles"
+description = "requirePermission on POST /api/users (users.create); role in the body validated against the roles table (unknown role 400, no silent Member fallback); the ROLES const deleted from the users route. This entry's share of R4: every existing users route guarded; R2's share: creation honors roles as data."
+verify = "As Editor (has users.create) POST /api/users succeeds 201; as Member 403; a body naming an unknown role answers 400; grep finds no hardcoded role list in src/app/api."
+covers = ["R2", "R4"]
+after = [1]
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 3
+type = "story"
+title = "Roles API: list and create"
+description = "GET /api/roles (roles.view): all roles with userCount and resolvedPermissions. POST /api/roles (roles.manage): server-slugified unique key, every permission entry validated as a catalog key or wildcard (else 400), is_system false, audit role.created. R2's share: create + read; R7's share: the first audited mutation."
+verify = "As Admin, POST /api/roles creates 'Support' with granted keys and it appears in GET with a userCount of 0 and resolvedPermissions; the body with a bogus permission string 400s; a role_audit row records the actor; as Member both routes 403."
+covers = ["R2", "R7"]
+after = [1]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 4
+type = "story"
+title = "Roles API: rename, delete with blocks, grant replace + lockout guards"
+description = "PATCH /api/roles/[key] (name/description, key immutable, 404 unknown); DELETE (409 system role, 409 with userCount when users attached, audit); PATCH /api/roles/[key]/permissions (full-set replace, validation 400, own-role edit 403, last-roles.manage strip 409, audit with before/after). Completes R2's API surface and all of R7. Relies on entry 3's created roles as fixtures and entry 2's roles-table validation to attach a user to a custom role."
+verify = "Rename succeeds and the key in the URL still resolves; delete of a system role and of an in-use role each 409 with the reason; a Member editing their own role's grants gets 403; the last-roles.manage lockout computation passes its unit test (API path deliberately unreachable); after replacing the Member role's grants, a signed-in Member's next request reflects the change with no re-login; each mutation leaves an audit row."
+covers = ["R2", "R7"]
+after = [2, 3]
+hitl = false
+risk = "high"
+plan_checkpoint = true
+
+[[entry]]
+id = 5
+type = "story"
+title = "Refactor sweep"
+description = "Cleanup only, scoped at start from plans and review findings the epic deferred (e.g. shared validation helpers between the roles routes, resolver test structure and readability); a behavior fix found here opens a new story, it is not swept in. Scope pushed out of another entry becomes a new story, not swept in here."
+verify = "Lint, build and the full vitest suite pass; no TODOs or deferred markers left from entries 1-4."
+covers = []
+after = [1, 2, 3, 4]
+hitl = false
+risk = "low"
