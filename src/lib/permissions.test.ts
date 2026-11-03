@@ -8,6 +8,8 @@ import {
   isValidGrant,
   pageViewPermission,
   resolvePermissions,
+  wouldLeaveNoManageHolder,
+  type RoleGrantsUsage,
 } from "./permissions";
 
 /** The full v1 catalog in display order — the deterministic order the resolver
@@ -196,5 +198,69 @@ describe("catalog integrity", () => {
     for (const key of labelKeys) {
       expect(ALL_PERMISSION_KEYS, `orphan label ${key}`).toContain(key);
     }
+  });
+});
+
+describe("wouldLeaveNoManageHolder", () => {
+  const MANAGE = "roles.manage";
+
+  it("returns true when the sole holder role is stripped of manage", () => {
+    const entries: RoleGrantsUsage[] = [
+      { key: "support", grants: [MANAGE], userCount: 2 },
+      { key: "viewer", grants: ["home.view"], userCount: 5 },
+    ];
+    expect(wouldLeaveNoManageHolder(entries, "support", ["home.view"])).toBe(true);
+  });
+
+  it("returns false when another role still holds manage explicitly", () => {
+    const entries: RoleGrantsUsage[] = [
+      { key: "ops-a", grants: [MANAGE], userCount: 2 },
+      { key: "ops-b", grants: [MANAGE], userCount: 1 },
+    ];
+    expect(wouldLeaveNoManageHolder(entries, "ops-a", ["home.view"])).toBe(false);
+  });
+
+  it("returns false when another role holds manage via a wildcard (`*` or `roles.*`)", () => {
+    const entries: RoleGrantsUsage[] = [
+      { key: "ops-a", grants: [MANAGE], userCount: 2 },
+      { key: "ops-star", grants: ["*"], userCount: 1 },
+      { key: "ops-group", grants: ["roles.*"], userCount: 1 },
+    ];
+    expect(wouldLeaveNoManageHolder(entries, "ops-a", ["home.view"])).toBe(false);
+    expect(wouldLeaveNoManageHolder(entries, "ops-star", ["home.view"])).toBe(false);
+    expect(wouldLeaveNoManageHolder(entries, "ops-group", ["home.view"])).toBe(false);
+  });
+
+  it("returns false when the edit adds manage to a role that has users", () => {
+    const entries: RoleGrantsUsage[] = [
+      { key: "ops", grants: [MANAGE], userCount: 0 },
+      { key: "support", grants: ["home.view"], userCount: 3 },
+    ];
+    expect(wouldLeaveNoManageHolder(entries, "support", [MANAGE])).toBe(false);
+  });
+
+  it("returns true when the only holder role has zero users (already locked out)", () => {
+    const entries: RoleGrantsUsage[] = [
+      { key: "ops", grants: [MANAGE], userCount: 0 },
+      { key: "support", grants: ["home.view"], userCount: 2 },
+    ];
+    // Editing a different role while nobody actually holds manage anywhere.
+    expect(wouldLeaveNoManageHolder(entries, "support", ["users.view"])).toBe(true);
+  });
+
+  it("returns false when the edited role was never a holder and another role holds", () => {
+    const entries: RoleGrantsUsage[] = [
+      { key: "admin", grants: ["*"], userCount: 5 },
+      { key: "support", grants: ["home.view"], userCount: 2 },
+    ];
+    expect(wouldLeaveNoManageHolder(entries, "support", ["users.view"])).toBe(false);
+  });
+
+  it("evaluates dead grants as non-holding, matching the resolver", () => {
+    // A "holder" whose only manage grant is a dead key resolves to nothing.
+    const entries: RoleGrantsUsage[] = [
+      { key: "stale", grants: ["roles.manage.retired"], userCount: 4 },
+    ];
+    expect(wouldLeaveNoManageHolder(entries, "stale", ["home.view"])).toBe(true);
   });
 });

@@ -158,3 +158,42 @@ export function isValidGrant(entry: string): boolean {
 export function hasPermission(resolved: readonly string[], required: string): boolean {
   return resolved.includes(required);
 }
+
+/** One role's stored grants plus how many users currently hold that role — the
+ *  exact data the lockout computation needs. The API layer gathers this for
+ *  every role in a single roles × users aggregate and hands it to the pure
+ *  function below; the function itself never touches the database. */
+export interface RoleGrantsUsage {
+  key: string;
+  grants: readonly string[];
+  userCount: number;
+}
+
+/**
+ * Would replacing `editedKey`'s grants with `replacementGrants` leave zero
+ * users holding `roles.manage` across every role — the last-admin lockout?
+ *
+ * Pure by contract (no DB, no clock): each entry's grants are resolved exactly
+ * as the request-time guard would resolve them (wildcards expanded, dead
+ * grants dropped), with the edited role evaluated as it would exist AFTER the
+ * write. An entry "holds" roles.manage when its resolution contains it, so
+ * `*` and `roles.*` count exactly like the concrete key.
+ *
+ * True when the sum of holders' userCounts is zero — including the
+ * already-locked-out state (no holder has users even before this edit): the
+ * API should still refuse to ratify a world where nobody can administer roles.
+ */
+export function wouldLeaveNoManageHolder(
+  entries: readonly RoleGrantsUsage[],
+  editedKey: string,
+  replacementGrants: readonly string[]
+): boolean {
+  let holders = 0;
+  for (const entry of entries) {
+    const grants = entry.key === editedKey ? replacementGrants : entry.grants;
+    if (hasPermission(resolvePermissions(grants), "roles.manage")) {
+      holders += entry.userCount;
+    }
+  }
+  return holders === 0;
+}
