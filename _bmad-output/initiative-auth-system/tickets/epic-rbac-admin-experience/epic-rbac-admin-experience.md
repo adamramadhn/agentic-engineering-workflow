@@ -8,6 +8,7 @@ companions: ["_bmad-output/initiative-auth-system/brainstorm-rbac-roles-permissi
 after: ["epic-rbac-foundation"]
 risk: medium
 refined: true
+status: done
 ---
 
 # Permission-aware UI and the two admin pages
