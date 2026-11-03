@@ -7,6 +7,7 @@ sources: []
 companions: ["_bmad-output/initiative-auth-system/brainstorm-rbac-roles-permissions/brainstorm-rbac-roles-permissions.md"]
 after: ["epic-rbac-admin-experience"]
 risk: low
+status: done
 refined: true
 ---
 
