@@ -1,7 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { RefreshCw } from "@/components/icons";
 import { ForbiddenView } from "@/components/status/forbidden-view";
+import { Button } from "@/components/ui/button-clean";
 import { usePermission } from "./permission-provider";
 
 /**
@@ -14,7 +16,25 @@ import { usePermission } from "./permission-provider";
  * dashboard chrome. The API remains the enforcement point.
  */
 export function PagePermissionGate({ permission, children }: { permission: string; children: ReactNode }) {
-  const { can, status } = usePermission();
+  const { can, status, reload } = usePermission();
+
+  if (status === "error") {
+    // The me fetch failed at transport level before anything committed:
+    // access is UNKNOWN, not denied, so the authoritative 403 copy must not
+    // render on a page the session may well be permitted to see.
+    return (
+      <div
+        className="flex min-h-[50vh] flex-col items-center justify-center gap-4"
+        role="status"
+        aria-label="Access unknown — connection failed"
+      >
+        <div className="size-2 animate-pulse rounded-full bg-neutral-300 dark:bg-neutral-700" />
+        <Button size="sm" variant="secondary" icon={<RefreshCw />} onClick={reload}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
 
   if (status === "loading") {
     return (

@@ -10,6 +10,7 @@ import {
   toggleGroupInSet,
   toggleVerbInSet,
 } from "@/components/dashboard/permission-toggles";
+import { invalidMessage, readBody, sameGrants } from "@/components/dashboard/roles-shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button-clean";
 import {
@@ -33,38 +34,6 @@ import type { RoleResponse } from "@/lib/roles";
  * removable chips. Every successful save refetches `GET /api/roles`, so what
  * is on screen is always what the audited API says.
  */
-
-/** Parse an API body without throwing on empty or non-JSON responses. Success
- *  bodies carry `role`; error bodies carry `error` and, on the field-level
- *  rejection, `invalidPermissions`. (Local twin of roles-view's reader — the
- *  shared fetch/toast layer is 2.4's anticipated cleanup.) */
-async function readBody(response: Response): Promise<{
-  role?: RoleResponse;
-  error?: string;
-  invalidPermissions?: string[];
-}> {
-  return ((await response.json().catch(() => null)) ?? {}) as {
-    role?: RoleResponse;
-    error?: string;
-    invalidPermissions?: string[];
-  };
-}
-
-/** Set equality between the editor's working grants and a role's saved grants. */
-function sameGrants(working: ReadonlySet<string>, saved: readonly string[]): boolean {
-  const savedSet = new Set(saved);
-  if (working.size !== savedSet.size) return false;
-  for (const grant of working) if (!savedSet.has(grant)) return false;
-  return true;
-}
-
-/** Inline message for the API's field-level rejections. */
-function invalidMessage(error: string, invalidPermissions?: string[]): string {
-  const detail = invalidPermissions?.length
-    ? ` Unknown permission${invalidPermissions.length === 1 ? "" : "s"}: ${invalidPermissions.join(", ")}`
-    : "";
-  return `${error}${detail}`;
-}
 
 /** Short checkbox labels: the row already names the resource, so the verb
  *  alone disambiguates. /roles' drawer keeps the catalog's full labels. */
@@ -96,8 +65,10 @@ function ManageRequiredNote() {
   );
 }
 
-/** Dead stored grants as chips. `onRemove` omitted (view-only session) renders
- *  the remove buttons disabled — the chips stay informative either way. */
+/** Dead stored grants as chips, in every branch (editable and read-only
+ *  alike). `onRemove` omitted (own-role, wildcard, or view-only session —
+ *  every save would 403) renders the remove buttons disabled; the chips stay
+ *  informative either way. */
 function DeadGrantChips({
   deadGrants,
   onRemove,
@@ -369,6 +340,7 @@ function RolePermissionsEditor({
             onToggleGroup={() => undefined}
             onToggleVerb={() => undefined}
           />
+          <DeadGrantChips deadGrants={deadGrants} />
         </div>
       ) : wildcardActive ? (
         <div className="grid gap-3">
@@ -394,6 +366,7 @@ function RolePermissionsEditor({
             onToggleGroup={() => undefined}
             onToggleVerb={() => undefined}
           />
+          <DeadGrantChips deadGrants={deadGrants} />
         </div>
       ) : !canManage ? (
         <div className="grid gap-3">

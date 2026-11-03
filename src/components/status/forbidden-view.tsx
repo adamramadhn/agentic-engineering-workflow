@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ArrowLeft } from "@/components/icons";
+import { usePermission } from "@/components/dashboard/permission-provider";
 import { PERMISSION_LABELS } from "@/lib/permissions";
 
 /**
@@ -9,8 +10,14 @@ import { PERMISSION_LABELS } from "@/lib/permissions";
  * the dashboard chrome stays and only the gated view is replaced, so this is a
  * content block mirroring not-found-view.tsx's structure and styling (mono
  * status tag, title, description, one action), not a full StatusShell page.
+ *
+ * Every render site sits under the workspace layout's PermissionProvider (the
+ * gate, and the /roles + /permissions RSC pages' own 403 branch), so the CTA
+ * can be permission-gated itself: a session without home.view must not be
+ * offered a Dashboard link it would only 403 on.
  */
 export function ForbiddenView({ permission }: { permission: string }) {
+  const { can } = usePermission();
   const label = PERMISSION_LABELS[permission] ?? permission;
   return (
     <div className="flex flex-col items-center">
@@ -30,16 +37,19 @@ export function ForbiddenView({ permission }: { permission: string }) {
         <span className="font-medium text-[#52525b] dark:text-neutral-300">{label}</span> permission.
       </p>
 
-      {/* Tactile Action Buttons */}
-      <div className="mt-6 flex items-center gap-2">
-        <Link
-          href="/"
-          className="h-7.5 px-3 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 text-[11.5px] font-medium inline-flex items-center justify-center gap-1.5 transition-all select-none active:scale-[0.96]"
-        >
-          <ArrowLeft className="size-3" />
-          <span>Dashboard</span>
-        </Link>
-      </div>
+      {/* Tactile Action Buttons — only destinations this session may actually
+          reach (a no-grants role would just 403 again on the Dashboard). */}
+      {can("home.view") && (
+        <div className="mt-6 flex items-center gap-2">
+          <Link
+            href="/"
+            className="h-7.5 px-3 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 text-[11.5px] font-medium inline-flex items-center justify-center gap-1.5 transition-all select-none active:scale-[0.96]"
+          >
+            <ArrowLeft className="size-3" />
+            <span>Dashboard</span>
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

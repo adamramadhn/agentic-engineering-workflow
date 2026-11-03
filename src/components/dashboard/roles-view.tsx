@@ -20,6 +20,7 @@ import {
   toggleGroupInSet,
   toggleVerbInSet,
 } from "@/components/dashboard/permission-toggles";
+import { invalidMessage, readBody, sameGrants } from "@/components/dashboard/roles-shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button-clean";
 import {
@@ -71,39 +72,6 @@ interface CreateDraft {
   name: string;
   description: string;
   permissions: string[];
-}
-
-/** Parse an API body without throwing on empty or non-JSON responses. Success
- *  bodies carry `role`; error bodies carry `error` and, on the two field-level
- *  rejections, `invalidPermissions` / `userCount`. */
-async function readBody(response: Response): Promise<{
-  role?: RoleResponse;
-  error?: string;
-  invalidPermissions?: string[];
-  userCount?: number;
-}> {
-  return ((await response.json().catch(() => null)) ?? {}) as {
-    role?: RoleResponse;
-    error?: string;
-    invalidPermissions?: string[];
-    userCount?: number;
-  };
-}
-
-/** Set equality between the drawer's working grants and a role's saved grants. */
-function sameGrants(working: ReadonlySet<string>, saved: readonly string[]): boolean {
-  const savedSet = new Set(saved);
-  if (working.size !== savedSet.size) return false;
-  for (const grant of working) if (!savedSet.has(grant)) return false;
-  return true;
-}
-
-/** Inline message for the API's field-level rejections. */
-function invalidMessage(error: string, invalidPermissions?: string[]): string {
-  const detail = invalidPermissions?.length
-    ? ` Unknown permission${invalidPermissions.length === 1 ? "" : "s"}: ${invalidPermissions.join(", ")}`
-    : "";
-  return `${error}${detail}`;
 }
 
 export function RolesView({

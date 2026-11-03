@@ -2,8 +2,14 @@
 
 import Link from "next/link";
 import { ArrowLeft } from "@/components/icons";
+import { usePermission } from "@/components/dashboard/permission-provider";
 
 export function NotFoundView() {
+  // Supplied by the PermissionProvider app/not-found.tsx wraps this view in:
+  // the Ask AI link only renders for sessions that may actually open it (a
+  // 401 on the me fetch resolves deny-all and hides the link).
+  const { can } = usePermission();
+
   return (
     <div className="flex flex-col items-center">
       {/* Category / Status Code Tag */}
@@ -30,12 +36,14 @@ export function NotFoundView() {
           <ArrowLeft className="size-3" />
           <span>Dashboard</span>
         </Link>
-        <Link
-          href="/ask-ai"
-          className="h-7.5 px-2.5 rounded-lg border border-[#e2e2e5] dark:border-neutral-800 bg-white dark:bg-[#18181b] hover:bg-[#fafafb] dark:hover:bg-neutral-800 text-[#18181b] dark:text-neutral-200 text-[11.5px] font-medium inline-flex items-center justify-center gap-1.5 transition-all select-none active:scale-[0.96]"
-        >
-          Ask AI
-        </Link>
+        {can("ask-ai.view") && (
+          <Link
+            href="/ask-ai"
+            className="h-7.5 px-2.5 rounded-lg border border-[#e2e2e5] dark:border-neutral-800 bg-white dark:bg-[#18181b] hover:bg-[#fafafb] dark:hover:bg-neutral-800 text-[#18181b] dark:text-neutral-200 text-[11.5px] font-medium inline-flex items-center justify-center gap-1.5 transition-all select-none active:scale-[0.96]"
+          >
+            Ask AI
+          </Link>
+        )}
       </div>
     </div>
   );

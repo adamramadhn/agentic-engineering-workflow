@@ -18,7 +18,13 @@ interface PermissionContextValue {
   user: SessionUser | null;
   permissions: ReadonlySet<string>;
   can(permission: string): boolean;
-  status: "loading" | "ready";
+  /** `"error"` means unknown, not denied: the first load failed at transport
+   *  level with nothing committed. Nav surfaces still filter against the
+   *  (empty) set; only the gate's copy changes (Retry, not the 403). */
+  status: "loading" | "ready" | "error";
+  /** Manual re-fetch (the gate's Retry): back to `"loading"`, then the load's
+   *  own guards decide the next status. */
+  reload(): void;
 }
 
 const PermissionContext = createContext<PermissionContextValue | null>(null);
@@ -35,12 +41,20 @@ const EMPTY_PERMISSIONS: ReadonlySet<string> = new Set<string>();
  * `can` is plain Set membership over the already-expanded payload — the
  * resolver ran server-side (epic 1), so the client interprets no wildcards.
  * The API remains the enforcement point; this provider only drives UX.
+ *
+ * Status: `"loading"` until the first load settles; `"error"` only when that
+ * first load fails at transport level with nothing committed (unknown ≠
+ * denied — a focus re-fetch failure after a commit keeps the prior state and
+ * stays `"ready"`); `reload()` re-runs the fetch from the gate's Retry.
  */
 export function PermissionProvider({ children }: { children: ReactNode }) {
   const latestLoadRef = useRef(0);
+  // Whether any payload has committed yet (a 401's deny-all counts): the
+  // "error" status is exclusive to a transport failure with nothing committed.
+  const committedRef = useRef(false);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [permissions, setPermissions] = useState<ReadonlySet<string>>(EMPTY_PERMISSIONS);
-  const [status, setStatus] = useState<"loading" | "ready">("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
   const load = useCallback(() => {
     // Monotonic token: only the most recently started fetch may commit state.
@@ -57,19 +71,20 @@ export function PermissionProvider({ children }: { children: ReactNode }) {
         : Promise.resolve(null)))
       .then(payload => {
         if (isStale()) return;
+        committedRef.current = true;
         const me = payload?.user ?? null;
         const granted = me?.permissions;
         setUser(me);
         setPermissions(new Set(Array.isArray(granted) ? granted : []));
+        setStatus("ready");
       })
       .catch(() => {
-        // Transient failure: a focus re-fetch keeps the prior state; the initial
-        // mount keeps its deny-all default. Never flash a wider set on error.
-      })
-      .finally(() => {
-        // A stale finally must not flip status either (it could mark "ready"
-        // around whatever the newer fetch is about to commit).
-        if (!isStale()) setStatus("ready");
+        // Transport-level failure (offline, stalled connection). Before
+        // anything has committed, access is unknown rather than denied —
+        // surface "error" so the gate offers Retry instead of an authoritative
+        // 403. After a commit, keep the prior state and stay "ready": a
+        // transient focus re-fetch must never flash deny-all (or a wider set).
+        if (!isStale() && !committedRef.current) setStatus("error");
       });
   }, []);
 
@@ -87,9 +102,17 @@ export function PermissionProvider({ children }: { children: ReactNode }) {
 
   const can = useCallback((permission: string) => permissions.has(permission), [permissions]);
 
+  const reload = useCallback(() => {
+    // Flip to the checking placeholder first so the gate's Retry button
+    // disappears for the duration (no double fires); the load's own guards
+    // then commit "ready" or re-enter "error".
+    setStatus("loading");
+    load();
+  }, [load]);
+
   const value = useMemo<PermissionContextValue>(
-    () => ({ user, permissions, can, status }),
-    [user, permissions, can, status]
+    () => ({ user, permissions, can, status, reload }),
+    [user, permissions, can, status, reload]
   );
 
   return <PermissionContext.Provider value={value}>{children}</PermissionContext.Provider>;
