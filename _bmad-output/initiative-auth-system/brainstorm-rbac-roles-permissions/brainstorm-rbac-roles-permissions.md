@@ -351,6 +351,8 @@ RSC first paint + client island for interaction (per the reversal decision: fast
 
 ### Permission matrix page — `/permissions` (`src/app/(workspace)/permissions/page.tsx`)
 
+> **Revision (2026-11-03, user):** shipped design is a per-role editor, not this matrix — a role selector on `/permissions` reveals grouped per-resource verb checkboxes (one Save per selected role). Sticky columns, per-column save and mobile collapse dissolve; cross-links, wildcard lock, own-role blocking carry over. See epic-rbac-admin-experience Notes and ticket 2.3.
+
 Thin view over the roles API (the Kill-the-Crown-Jewel lesson: the API was built as if the matrix exists, so this is presentation only):
 
 - `MatrixView` client island fed by `GET /api/roles`.

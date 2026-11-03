@@ -20,22 +20,31 @@ export type Verb = "view" | "create" | "update" | "delete" | "use" | "manage";
  *  is not part of ALL_PAGES, so it is added explicitly here. */
 type NavPageId = (typeof ALL_PAGES)[number]["id"] | "watching";
 
-/** Record<NavPageId, ...> makes TypeScript fail the build when a page is added
+/** Non-page admin resources. Declared before VERBS_BY_PAGE because the Record
+ *  below deliberately excludes these ids: `roles` is both a nav page (since the
+ *  /roles admin page) and an EXTRA_RESOURCES resource, and a resource must own
+ *  exactly one verbs declaration or PERMISSION_GROUPS would list it twice.
+ *  `as const satisfies` keeps the resource literals narrow (VerbsPageId excludes
+ *  them by literal) while still checking the same shape as before. */
+const EXTRA_RESOURCES = [
+  { resource: "roles", verbs: ["view", "manage"] },
+] as const satisfies ReadonlyArray<{ resource: string; verbs: readonly Verb[] }>;
+
+/** Nav-page ids whose verbs entry must live in VERBS_BY_PAGE: every nav id
+ *  except the admin resources above. */
+type VerbsPageId = Exclude<NavPageId, (typeof EXTRA_RESOURCES)[number]["resource"]>;
+
+/** Record<VerbsPageId, ...> makes TypeScript fail the build when a page is added
  *  to navigation.ts without a verbs entry — the single-source-of-truth check.
  *  Declaration order is the catalog order (workspace pages, then watching,
  *  then admin); these keys are non-numeric so object insertion order holds. */
-const VERBS_BY_PAGE: Record<NavPageId, readonly Verb[]> = {
+const VERBS_BY_PAGE: Record<VerbsPageId, readonly Verb[]> = {
   home: ["view"],
   "ask-ai": ["view", "use"],
   "agent-board": ["view"],
   watching: ["view"],
   users: ["view", "create", "update", "delete"],
 };
-
-/** Non-page admin resources. */
-const EXTRA_RESOURCES: ReadonlyArray<{ resource: string; verbs: readonly Verb[] }> = [
-  { resource: "roles", verbs: ["view", "manage"] },
-];
 
 /** Human group heading per resource — the matrix UI's row groups and the i18n
  *  base. Keys are stable resource ids; labels are the translatable surface. */

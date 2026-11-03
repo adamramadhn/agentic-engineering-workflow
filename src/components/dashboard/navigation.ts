@@ -1,4 +1,4 @@
-import { Bot, Sparkles, Users } from "@/components/icons";
+import { Bot, KeyRound, Sparkles, Users } from "@/components/icons";
 import { HomeIcon } from "./icons";
 
 export const WORKSPACE_PAGES = [
@@ -9,6 +9,7 @@ export const WORKSPACE_PAGES = [
 
 export const ADMIN_PAGES = [
   { id: "users", href: "/users", label: "Users", icon: Users },
+  { id: "roles", href: "/roles", label: "Roles", icon: KeyRound },
 ] as const;
 
 export const ALL_PAGES = [...WORKSPACE_PAGES, ...ADMIN_PAGES];

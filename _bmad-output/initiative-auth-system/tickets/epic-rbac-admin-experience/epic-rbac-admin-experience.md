@@ -14,7 +14,7 @@ refined: true
 
 ## Description
 
-Everything the user and the admin see: `PermissionProvider` + `usePermission` in the dashboard shell, sidebar/command-palette/Watching filtered by grants, the per-page 403 view for deep links, the `/roles` master page (table, drawer, duplicate, delete with blocks), the `/permissions` matrix (grouped grid, per-column save) and their URL-param cross-links; `users-view` reads its role options from the roles API. Built on epic 1's API contract (design §6, §10 steps 5–6).
+Everything the user and the admin see: `PermissionProvider` + `usePermission` in the dashboard shell, sidebar/command-palette/Watching filtered by grants, the per-page 403 view for deep links, the `/roles` master page (table, drawer, duplicate, delete with blocks), the `/permissions` page (role select → per-resource verb checkboxes) and their URL-param cross-links; `users-view` reads its role options from the roles API. Built on epic 1's API contract (design §6 as revised 2026-11-03, §10 steps 5–6).
 
 ## Outcome
 
@@ -24,7 +24,7 @@ For every signed-in user, the app shows exactly what their role permits — the 
 
 - Sidebar, command palette and the Watching section render exactly the permitted entries for each seeded role in the running app.
 - A deep link to a forbidden page shows the 403 view inside the dashboard chrome, never data.
-- `/roles` supports create, edit, duplicate, and delete with the same blocks the API enforces; `/permissions` saves per column and reflects changes after save.
+- `/roles` supports create, edit, duplicate, and delete with the same blocks the API enforces; `/permissions` edits the selected role's grants (role select → per-resource verb checkboxes) and reflects changes after save.
 - The two pages cross-link via `?role=<key>` in both directions.
 - No hardcoded role list remains in `users-view` (options come from `GET /api/roles`).
 - Delivered to the running app and verified per seeded role.
@@ -43,3 +43,4 @@ For every signed-in user, the app shows exactly what their role permits — the 
 ## Notes
 
 - Decision (2026-11-03): Should-grade items (403 view pattern, matrix mobile collapse, me re-fetch on focus, duplicate button) ride inside this epic's stories rather than a separate epic.
+- Decision (2026-11-03, user revision): `/permissions` is a per-role editor — a role selector reveals grouped per-resource verb checkboxes (e.g. `Ask AI | view · use`, `Users | view · create · update · delete`) with one Save for the selected role — replacing the design's roles-as-columns matrix. Sticky header/column, per-column save and the mobile-collapse Should item dissolve; cross-links (`?role=`), the wildcard read-only lock, and own-role blocking carry over. Design §6's matrix subsection is superseded for this epic by this decision.
