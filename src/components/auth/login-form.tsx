@@ -7,34 +7,55 @@ import { toast } from "sonner";
 import { AuthField, authInputClass } from "./auth-field";
 import { PasswordInput } from "./password-input";
 import { SocialAuthButtons } from "./social-auth-buttons";
-import { BrightdeskMark } from "@/components/dashboard/icons";
+import { focusAuthField, validateAuthField, validateAuthForm, type AuthErrors } from "./validation";
 
 export function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<AuthErrors>({});
+  const [formError, setFormError] = useState("");
+
+  const updateField = (field: "email" | "password", value: string) => {
+    if (field === "email") setEmail(value);
+    else setPassword(value);
+    setFormError("");
+    // Revalidate only after submit has identified a problem, not while first typing.
+    if (errors[field]) setErrors((current) => ({ ...current, [field]: validateAuthField(field, value) }));
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (loading) return;
+    const form = e.currentTarget;
+    const nextErrors = validateAuthForm({ email, password });
+    setErrors(nextErrors);
+    setFormError("");
+    const firstInvalid = Object.keys(nextErrors)[0];
+    if (firstInvalid) {
+      focusAuthField(form, firstInvalid);
+      return;
+    }
     setLoading(true);
 
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: email.trim(), password }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(data.error || "Failed to sign in");
+        // Invalid credentials concern the pair; do not blame a particular field.
+        setFormError(data.error || "Failed to sign in. Please try again.");
         return;
       }
       toast.success("Signed in successfully");
       router.push("/");
       router.refresh();
     } catch {
-      toast.error("Network error. Please try again.");
+      setFormError("Network error. Check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -43,6 +64,8 @@ export function LoginForm() {
   const handleFillDemo = () => {
     setEmail("admin@onyx.dev");
     setPassword("password123");
+    setErrors({});
+    setFormError("");
     toast.info("Demo credentials filled");
   };
 
@@ -79,15 +102,19 @@ export function LoginForm() {
       </div>
 
       {/* Email / Password Form */}
-      <form onSubmit={handleSubmit} className="space-y-3.5">
-        <AuthField label="Email address" htmlFor="email">
+      <form onSubmit={handleSubmit} noValidate className="space-y-3.5">
+        <p role="alert" className="empty:hidden text-xs text-red-700 dark:text-red-300">{formError}</p>
+        <AuthField label="Email address" htmlFor="email" error={errors.email}>
           <input
             id="email"
             name="email"
             type="email"
             autoComplete="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => updateField("email", e.target.value)}
+            aria-invalid={errors.email ? true : undefined}
+            aria-describedby={errors.email ? "email-error" : undefined}
+            spellCheck={false}
             placeholder="name@company.com"
             required
             className={authInputClass}
@@ -97,6 +124,7 @@ export function LoginForm() {
         <AuthField
           label="Password"
           htmlFor="password"
+          error={errors.password}
           action={
             <Link
               href="/forgot-password"
@@ -111,7 +139,9 @@ export function LoginForm() {
             name="password"
             autoComplete="current-password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => updateField("password", e.target.value)}
+            aria-invalid={errors.password ? true : undefined}
+            aria-describedby={errors.password ? "password-error" : undefined}
             placeholder="••••••••"
             required
           />
@@ -133,8 +163,9 @@ export function LoginForm() {
 
         <button
           type="submit"
-          disabled={loading}
-          className="mt-1 flex h-[36px] w-full items-center justify-center rounded-lg bg-neutral-900 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800 active:bg-neutral-950 disabled:opacity-60 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-100 cursor-pointer shadow-2xs"
+          aria-disabled={loading}
+          aria-busy={loading}
+          className="mt-1 flex h-[36px] w-full items-center justify-center rounded-lg bg-neutral-900 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800 active:bg-neutral-950 aria-disabled:opacity-60 aria-disabled:cursor-wait dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-100 cursor-pointer shadow-2xs"
         >
           {loading ? "Signing in..." : "Sign in"}
         </button>

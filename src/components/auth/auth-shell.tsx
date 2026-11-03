@@ -1,15 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { BrightdeskMark } from "@/components/dashboard/icons";
-import { ThemeToggle } from "@/components/dashboard/theme-toggle";
-
 interface AuthShellProps {
   children: React.ReactNode;
 }
 
 export function AuthShell({ children }: AuthShellProps) {
   return (
+    // Scope dark mode to auth; never overwrite the dashboard's saved theme.
+    <div className="auth-page dark" style={{ colorScheme: "dark" }}>
     <div className="relative flex min-h-svh flex-col justify-between overflow-hidden bg-gradient-to-b from-[#fafafc] via-[#f3f4f6] to-[#ebecef] text-neutral-900 antialiased dark:from-[#09090b] dark:via-[#09090b] dark:to-[#0c0d10] dark:text-neutral-100">
       {/* 1. Technical Architectural Grid with Native SVG Radial Mask */}
       <svg
@@ -61,30 +59,6 @@ export function AuthShell({ children }: AuthShellProps) {
 
       {/* 3. Subtle Card Aura Behind Center */}
       <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[340px] w-[460px] rounded-full bg-white/70 blur-[90px] dark:bg-white/[0.02]" />
-
-      {/* Minimal Top Header */}
-      <header className="relative z-10 flex h-16 items-center justify-between px-5 sm:px-8">
-        <Link
-          href="/"
-          className="group inline-flex items-center gap-2.5 transition-opacity hover:opacity-85"
-        >
-          <BrightdeskMark className="size-6 rounded-md transition-transform duration-200 group-hover:scale-105" />
-          <span className="text-[14px] font-semibold tracking-[-0.01em]">
-            Onyx
-          </span>
-        </Link>
-
-        <div className="flex items-center gap-2">
-          <Link
-            href="/"
-            className="hidden sm:inline-flex items-center rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-100"
-          >
-            Back to dashboard
-          </Link>
-          <div className="hidden sm:block h-3.5 w-px bg-neutral-200 dark:bg-neutral-800" />
-          <ThemeToggle />
-        </div>
-      </header>
 
       {/* Centered Main Auth Card with Precision Framing */}
       <main className="relative z-10 flex flex-1 items-center justify-center px-4 py-8">
@@ -138,33 +112,7 @@ export function AuthShell({ children }: AuthShellProps) {
           </div>
         </div>
       </main>
-
-      {/* Minimal Footer */}
-      <footer className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-2 px-6 py-5 text-[11.5px] text-neutral-400 dark:text-neutral-500">
-        <p>© 2025 Onyx. All rights reserved.</p>
-        <div className="flex items-center gap-3">
-          <a
-            href="#"
-            className="transition-colors hover:text-neutral-700 dark:hover:text-neutral-300"
-          >
-            Privacy
-          </a>
-          <span>•</span>
-          <a
-            href="#"
-            className="transition-colors hover:text-neutral-700 dark:hover:text-neutral-300"
-          >
-            Terms
-          </a>
-          <span>•</span>
-          <a
-            href="#"
-            className="transition-colors hover:text-neutral-700 dark:hover:text-neutral-300"
-          >
-            Support
-          </a>
-        </div>
-      </footer>
+    </div>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { AuthField, authInputClass } from "./auth-field";
 import { PasswordInput } from "./password-input";
 import { SocialAuthButtons } from "./social-auth-buttons";
+import { focusAuthField, validateAuthField, validateAuthForm, type AuthErrors, type AuthFieldName } from "./validation";
 
 export function RegisterForm() {
   const router = useRouter();
@@ -14,11 +15,27 @@ export function RegisterForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<AuthErrors>({});
+  const [formError, setFormError] = useState("");
+
+  const updateField = (field: AuthFieldName, value: string) => {
+    if (field === "name") setName(value);
+    else if (field === "email") setEmail(value);
+    else setPassword(value);
+    setFormError("");
+    if (errors[field]) setErrors((current) => ({ ...current, [field]: validateAuthField(field, value, true) }));
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (password.length < 8) {
-      toast.error("Password must be at least 8 characters");
+    if (loading) return;
+    const form = e.currentTarget;
+    const nextErrors = validateAuthForm({ name, email, password }, true);
+    setErrors(nextErrors);
+    setFormError("");
+    const firstInvalid = Object.keys(nextErrors)[0];
+    if (firstInvalid) {
+      focusAuthField(form, firstInvalid);
       return;
     }
 
@@ -28,18 +45,23 @@ export function RegisterForm() {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), password }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(data.error || "Failed to create account");
+        if (res.status === 409) {
+          setErrors({ email: data.error || "An account with this email already exists." });
+          focusAuthField(form, "email");
+        } else {
+          setFormError(data.error || "Failed to create account. Please try again.");
+        }
         return;
       }
       toast.success("Account created successfully");
       router.push("/");
       router.refresh();
     } catch {
-      toast.error("Network error. Please try again.");
+      setFormError("Network error. Check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -78,29 +100,35 @@ export function RegisterForm() {
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-3.5">
-        <AuthField label="Full name" htmlFor="name">
+      <form onSubmit={handleSubmit} noValidate className="space-y-3.5">
+        <p role="alert" className="empty:hidden text-xs text-red-700 dark:text-red-300">{formError}</p>
+        <AuthField label="Full name" htmlFor="name" error={errors.name}>
           <input
             id="name"
             name="name"
             type="text"
             autoComplete="name"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => updateField("name", e.target.value)}
+            aria-invalid={errors.name ? true : undefined}
+            aria-describedby={errors.name ? "name-error" : undefined}
             placeholder="Alex Morgan"
             required
             className={authInputClass}
           />
         </AuthField>
 
-        <AuthField label="Work email" htmlFor="email">
+        <AuthField label="Work email" htmlFor="email" error={errors.email}>
           <input
             id="email"
             name="email"
             type="email"
             autoComplete="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => updateField("email", e.target.value)}
+            aria-invalid={errors.email ? true : undefined}
+            aria-describedby={errors.email ? "email-error" : undefined}
+            spellCheck={false}
             placeholder="name@company.com"
             required
             className={authInputClass}
@@ -111,13 +139,16 @@ export function RegisterForm() {
           label="Password"
           htmlFor="password"
           hint="Must be at least 8 characters"
+          error={errors.password}
         >
           <PasswordInput
             id="password"
             name="password"
             autoComplete="new-password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => updateField("password", e.target.value)}
+            aria-invalid={errors.password ? true : undefined}
+            aria-describedby={errors.password ? "password-error password-hint" : "password-hint"}
             placeholder="••••••••"
             minLength={8}
             required
@@ -126,8 +157,9 @@ export function RegisterForm() {
 
         <button
           type="submit"
-          disabled={loading}
-          className="mt-1 flex h-[36px] w-full items-center justify-center rounded-lg bg-neutral-900 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800 active:bg-neutral-950 disabled:opacity-60 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-100 cursor-pointer shadow-2xs"
+          aria-disabled={loading}
+          aria-busy={loading}
+          className="mt-1 flex h-[36px] w-full items-center justify-center rounded-lg bg-neutral-900 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800 active:bg-neutral-950 aria-disabled:opacity-60 aria-disabled:cursor-wait dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-100 cursor-pointer shadow-2xs"
         >
           {loading ? "Creating account..." : "Create account"}
         </button>

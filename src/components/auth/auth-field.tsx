@@ -8,6 +8,7 @@ interface AuthFieldProps {
   htmlFor?: string;
   action?: ReactNode;
   hint?: string;
+  error?: string;
   children: ReactNode;
 }
 
@@ -16,6 +17,7 @@ export function AuthField({
   htmlFor,
   action,
   hint,
+  error,
   children,
 }: AuthFieldProps) {
   return (
@@ -30,8 +32,13 @@ export function AuthField({
         {action}
       </div>
       {children}
+      {error && (
+        <p id={`${htmlFor}-error`} className="text-xs text-red-700 dark:text-red-300">
+          {error}
+        </p>
+      )}
       {hint && (
-        <p className="text-[11.5px] text-neutral-500 dark:text-neutral-400">
+        <p id={`${htmlFor}-hint`} className="text-[11.5px] text-neutral-500 dark:text-neutral-400">
           {hint}
         </p>
       )}
