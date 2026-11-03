@@ -154,9 +154,9 @@ describe("hasPermission", () => {
 describe("pageViewPermission", () => {
   it("maps every nav page id to its own view key", () => {
     for (const page of ALL_PAGES) {
-      // Widen to string: "permissions" is not in today's ALL_PAGES id union,
-      // but the override must hold the moment epic 2 adds that id — a narrow
-      // comparison would be a type error today (TS2367).
+      // Widen to string: "permissions" is an aliased page id whose override
+      // must hold now that epic 2 adds it to ALL_PAGES — the comparison stays
+      // a runtime fact, not a compile-time one.
       const id: string = page.id;
       // The permissions matrix page deliberately shares the roles resource's
       // view verb.
@@ -179,16 +179,23 @@ describe("catalog integrity", () => {
     expect(ALL_PERMISSION_KEYS).toHaveLength(11);
   });
 
-  it("has a verbs entry for every nav page id plus watching", () => {
+  it("has a verbs entry (own or aliased) for every nav page id plus watching", () => {
     const resources = new Set(PERMISSION_GROUPS.map((group) => group.resource));
-    for (const page of ALL_PAGES) {
-      expect(resources).toContain(page.id);
-    }
-    expect(resources).toContain("watching");
-    // Every gated page must at least be viewable — the sidebar gate is `<id>.view`.
-    for (const id of [...ALL_PAGES.map((page) => page.id), "watching"]) {
-      const group = PERMISSION_GROUPS.find((candidate) => candidate.resource === id);
-      expect(group?.verbs).toContain("view");
+    for (const page of [...ALL_PAGES, { id: "watching" } as const]) {
+      // Widen to string: ids like "permissions" are aliased pages — they render
+      // another resource's permissions, so pageViewPermission maps their gate
+      // to that resource's view verb and they own no verbs entry.
+      const id: string = page.id;
+      const owns = resources.has(id);
+      const aliased = pageViewPermission(id) !== `${id}.view`;
+      expect(owns || aliased, `${id} owns no verbs entry and borrows none`).toBe(true);
+      // Every gated page must at least be viewable — the sidebar gate is
+      // pageViewPermission(id), and that key must be a real catalog key.
+      expect(ALL_PERMISSION_KEYS).toContain(pageViewPermission(id));
+      if (owns) {
+        const group = PERMISSION_GROUPS.find((candidate) => candidate.resource === id);
+        expect(group?.verbs, `${id} must define a view verb`).toContain("view");
+      }
     }
   });
 

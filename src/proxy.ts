@@ -3,8 +3,17 @@ import type { NextRequest } from "next/server";
 import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/auth-constants";
 import { verifyAccessTokenStatus } from "@/lib/jwt";
 
-/** Workspace routes that require a signed-in session. */
-const PROTECTED_PREFIXES = ["/users", "/agent-board", "/ask-ai", "/watching"];
+/** Workspace routes that require a signed-in session. The admin pages join the
+ *  list now that they exist: an anonymous visitor is redirected before any
+ *  session-dependent rendering runs. */
+const PROTECTED_PREFIXES = [
+  "/users",
+  "/agent-board",
+  "/ask-ai",
+  "/watching",
+  "/roles",
+  "/permissions",
+];
 
 /** Auth pages a signed-in user has no business visiting. */
 const AUTH_PAGES = ["/login", "/register", "/forgot-password"];

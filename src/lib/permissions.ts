@@ -30,9 +30,23 @@ const EXTRA_RESOURCES = [
   { resource: "roles", verbs: ["view", "manage"] },
 ] as const satisfies ReadonlyArray<{ resource: string; verbs: readonly Verb[] }>;
 
+/** Nav pages that render another resource's permissions and own no verbs of
+ *  their own: /permissions is the roles catalog's per-role matrix, gated by
+ *  pageViewPermission("permissions") → roles.view. Declared here so the Record
+ *  below stays exhaustive without minting `permissions.*` catalog keys — the
+ *  page borrows the roles resource's verbs instead of defining any. */
+// Type-level only by design: the `as const satisfies` exists to keep the
+// literals narrow for VerbsPageId's Exclude — nothing reads the array at
+// runtime, which is why the aliased ids never leak into the exported catalog.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- deliberate, see above
+const ALIASED_PAGES = ["permissions"] as const satisfies readonly NavPageId[];
+
 /** Nav-page ids whose verbs entry must live in VERBS_BY_PAGE: every nav id
- *  except the admin resources above. */
-type VerbsPageId = Exclude<NavPageId, (typeof EXTRA_RESOURCES)[number]["resource"]>;
+ *  except the admin resources and aliased pages above. */
+type VerbsPageId = Exclude<
+  NavPageId,
+  (typeof EXTRA_RESOURCES)[number]["resource"] | (typeof ALIASED_PAGES)[number]
+>;
 
 /** Record<VerbsPageId, ...> makes TypeScript fail the build when a page is added
  *  to navigation.ts without a verbs entry — the single-source-of-truth check.
