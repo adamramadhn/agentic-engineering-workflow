@@ -7,7 +7,7 @@ sources: []
 companions: ["_bmad-output/initiative-auth-system/brainstorm-rbac-roles-permissions/brainstorm-rbac-roles-permissions.md"]
 after: ["epic-rbac-admin-experience"]
 risk: low
-refined: false
+refined: true
 ---
 
 # Proof: per-role fixtures and e2e
@@ -41,3 +41,7 @@ For the team, what each role can and cannot do is frozen by CI — the design's 
 ## Notes
 
 - Decision (2026-11-03): proof is its own epic (not scattered stories) so the fixture matrix and e2e land as one coherent, reviewable suite.
+- Decision (2026-11-03, refinement): the fixture matrix drives real HTTP against a booted app — not unit-invoked route handlers — because every guarded route reads the session through the request-cookies layer; unit-invocation would mock the layer under test.
+- Decision (2026-11-03, refinement): suites run against a per-run scratch database (CREATE/DROP on the project's existing pg server, verified feasible); the dev database is never a test target. The app's own `ensureSchema()` + role seeding bootstrap it, so the fixtures exercise the real boot path.
+- Decision (2026-11-03, refinement): CI is GitHub Actions (the repo's remote hosts it). Lint runs reported-but-non-blocking: repo-wide eslint carries 55 pre-existing errors + 19 warnings in template-owned files outside this initiative (recorded out of scope since epic 1); CI gates on build + vitest + playwright via the one-command runner.
+- Decision (2026-11-03, refinement): the pure vitest suite (catalog/resolver, epic 1) stays untouched and fast; the matrix runs as its own vitest project against the harness database, and e2e is playwright — `npm test` keeps its current meaning.
