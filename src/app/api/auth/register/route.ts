@@ -43,10 +43,13 @@ export async function POST(request: NextRequest) {
     const countResult = await query(`SELECT count(*)::int AS count FROM users`);
     const isFirstUser = countResult.rows[0].count === 0;
 
+    // $4 is the role param — the RETURNING subselect carries the role's grants
+    // so the registered user's session payload resolves permissions.
     const result = await query<UserRow>(
       `INSERT INTO users (name, email, password_hash, role, team, status)
        VALUES ($1, $2, $3, $4, $5, 'Active')
-       RETURNING id, name, email, password_hash, role, team, status, created_at`,
+       RETURNING id, name, email, password_hash, role, team, status, created_at,
+         (SELECT permissions FROM roles WHERE key = $4) AS role_permissions`,
       [name, email, await hashPassword(password), isFirstUser ? "Admin" : "Member", "General"]
     );
     const user = toSessionUser(result.rows[0]);

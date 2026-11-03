@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated dev-server output of this Next version (gitignored like .next).
+    ".next-dev/**",
   ]),
 ]);
 

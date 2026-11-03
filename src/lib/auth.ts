@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "crypto";
 import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import { query } from "./db";
+import { resolvePermissions } from "./permissions";
 import { ACCESS_COOKIE, REFRESH_COOKIE, REFRESH_COOKIE_PATH } from "./auth-constants";
 import {
   signAccessToken,
@@ -52,6 +53,8 @@ export interface SessionUser {
   team: string;
   status: string;
   createdAt: string;
+  /** Resolved + expanded via resolvePermissions() — concrete catalog keys only. */
+  permissions: string[];
 }
 
 export interface UserRow {
@@ -63,9 +66,18 @@ export interface UserRow {
   team: string;
   status: string;
   created_at: Date;
+  /**
+   * Raw role grants from the roles join — pg delivers JSONB already parsed as a
+   * JS value. Optional: rows from queries without the roles join resolve to a
+   * deny-all `[]`. Values other than strings (bad JSONB) are filtered out.
+   */
+  role_permissions?: unknown;
 }
 
 export function toSessionUser(row: UserRow): SessionUser {
+  const granted = Array.isArray(row.role_permissions)
+    ? row.role_permissions.filter((entry): entry is string => typeof entry === "string")
+    : [];
   return {
     id: row.id,
     name: row.name,
@@ -74,13 +86,18 @@ export function toSessionUser(row: UserRow): SessionUser {
     team: row.team,
     status: row.status,
     createdAt: row.created_at.toISOString(),
+    permissions: resolvePermissions(granted),
   };
 }
 
 async function loadUserByIdRow(id: string): Promise<UserRow | null> {
+  // COALESCE keeps a user whose role row is missing at [] = deny-all (cheap
+  // insurance; after schema v3 the users_role_fkey makes it unreachable).
   const result = await query<UserRow>(
-    `SELECT id, name, email, password_hash, role, team, status, created_at
-     FROM users WHERE id = $1`,
+    `SELECT u.id, u.name, u.email, u.password_hash, u.role, u.team, u.status, u.created_at,
+            COALESCE(r.permissions, '[]'::jsonb) AS role_permissions
+     FROM users u LEFT JOIN roles r ON r.key = u.role
+     WHERE u.id = $1`,
     [id]
   );
   return result.rows[0] ?? null;
