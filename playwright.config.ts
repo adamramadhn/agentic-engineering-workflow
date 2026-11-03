@@ -27,7 +27,7 @@ const PORT = Number(process.env.E2E_PORT || 4311); // 3010/3011 are dev servers
 const baseURL = `http://127.0.0.1:${PORT}`;
 
 const base = baseConnectionString();
-const scratchDbName = deriveScratchDbName();
+const scratchDbName = process.env.E2E_SCRATCH_DB_NAME || deriveScratchDbName();
 const scratchUrl = scratchConnectionString(base, scratchDbName);
 
 // One derivation, published to every consumer in this process (globalTeardown).
