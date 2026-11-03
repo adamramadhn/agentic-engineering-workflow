@@ -1,0 +1,25 @@
+# Auth System — epics in build order. `id` is permanent.
+# Split rule: one source capability per epic; contracts between epics only.
+
+[[epic]]
+id = 1
+slug = "epic-rbac-foundation"
+title = "RBAC foundation: catalog, schema, API guards"
+description = "Permissions come from one code catalog, roles live in the database, and every data API route enforces its permission server-side — the running app's APIs are protected with no UI yet."
+covers = ["R1", "R2", "R3", "R4", "R7", "R8", "R9"]
+
+[[epic]]
+id = 2
+slug = "epic-rbac-admin-experience"
+title = "Permission-aware UI and the two admin pages"
+description = "Sidebar, palette and pages respect grants; admins manage roles on /roles and grants on /permissions in the running app."
+covers = ["R5", "R6"]
+after = [{ epic = 1, needs = "the roles API and the resolved-permissions payload contract" }]
+
+[[epic]]
+id = 3
+slug = "epic-rbac-proof"
+title = "Proof: per-role fixtures and e2e"
+description = "Resolver unit tests, the per-role API fixture matrix and per-role e2e paths run green in CI, freezing the behavior the first two epics delivered."
+covers = ["R9"]
+after = [{ epic = 2, needs = "the gated sidebar/pages and both admin pages for e2e paths" }]
