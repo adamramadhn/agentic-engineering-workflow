@@ -1,0 +1,1520 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roles &amp; Permissions — a brainstorm keepsake</title>
+<meta name="description" content="Keepsake of an autonomous brainstorm: designing a Role &amp; Permission (RBAC) feature — 106 ideas, four techniques, one sentence.">
+<style>
+/* ============================================================
+   ROLES & PERMISSIONS — a brainstorm keepsake
+   dark-only, zero dependencies, everything inline
+   ============================================================ */
+
+:root{
+  --bg:#090b10;
+  --bg-2:#0d1017;
+  --panel:#11151e;
+  --panel-2:#161b26;
+  --line:rgba(255,255,255,.075);
+  --line-2:rgba(255,255,255,.16);
+  --text:#e9ecf2;
+  --muted:#9aa3b6;
+  --faint:#6d7689;
+
+  --amber:#f2b03d;
+  --amber-soft:rgba(242,176,61,.13);
+  --green:#5fd39a;
+  --green-soft:rgba(95,211,154,.12);
+  --red:#f06a5d;
+  --red-soft:rgba(240,106,93,.13);
+  --cyan:#74e4dc;
+  --cyan-soft:rgba(116,228,220,.11);
+  --violet:#b18cf5;
+  --violet-soft:rgba(177,140,245,.12);
+  --rose:#f49ab5;
+  --rose-soft:rgba(244,154,181,.12);
+
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+
+  --max:1080px;
+  --gutter:clamp(20px,5vw,48px);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;
+  background:
+    radial-gradient(1100px 560px at 78% -8%, rgba(242,176,61,.055), transparent 62%),
+    radial-gradient(900px 620px at -12% 22%, rgba(116,228,220,.045), transparent 60%),
+    var(--bg);
+  color:var(--text);
+  font-family:var(--sans);
+  font-size:16px;
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+::selection{background:rgba(242,176,61,.28);color:#fff}
+
+a{color:inherit;text-decoration:none}
+h1,h2,h3,h4{font-family:var(--serif);font-weight:600;letter-spacing:.2px;margin:0}
+p{margin:0}
+code{font-family:var(--mono);font-size:.86em;color:var(--amber);background:rgba(242,176,61,.08);border:1px solid rgba(242,176,61,.18);border-radius:5px;padding:.08em .38em;white-space:nowrap}
+button{font:inherit;color:inherit}
+
+.wrap{max-width:var(--max);margin:0 auto;padding:0 var(--gutter)}
+
+/* ---------- top progress + nav ---------- */
+.progress{position:fixed;top:0;left:0;right:0;height:2px;z-index:60;background:transparent}
+.progress span{display:block;height:100%;width:0;background:linear-gradient(90deg,rgba(242,176,61,.25),var(--amber));box-shadow:0 0 12px rgba(242,176,61,.5)}
+
+.topnav{
+  position:sticky;top:0;z-index:50;
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  background:rgba(9,11,16,.78);border-bottom:1px solid var(--line);
+}
+.topnav .wrap{display:flex;align-items:center;gap:22px;height:52px}
+.brand{font-family:var(--mono);font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:9px;white-space:nowrap}
+.brand svg{flex:none}
+.topnav nav{display:flex;gap:4px;margin-left:auto;overflow-x:auto;scrollbar-width:none}
+.topnav nav::-webkit-scrollbar{display:none}
+.topnav nav a{
+  font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);padding:6px 10px;border-radius:6px;white-space:nowrap;transition:color .2s,background .2s;
+}
+.topnav nav a:hover{color:var(--amber);background:var(--amber-soft)}
+
+/* ---------- shared section chrome ---------- */
+section{position:relative}
+.act{padding:clamp(72px,10vw,128px) 0 0}
+.act-head{border-top:1px solid var(--line);padding-top:26px;display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end}
+.act-no{font-family:var(--mono);font-size:.74rem;letter-spacing:.28em;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.act-no::after{content:"";width:44px;height:1px;background:currentColor;opacity:.5}
+.act-head h2{font-size:clamp(1.9rem,3.8vw,2.85rem);line-height:1.08}
+.act-sub{color:var(--muted);max-width:640px;margin-top:14px;font-size:1.02rem}
+.act-count{
+  margin-left:auto;align-self:flex-start;font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--faint);border:1px solid var(--line);border-radius:999px;padding:5px 13px;white-space:nowrap;
+}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.24em;text-transform:uppercase;color:var(--faint)}
+.lede{font-size:clamp(1.05rem,1.9vw,1.22rem);color:var(--muted);max-width:720px}
+
+/* act accents */
+.act--hmw{--acc:var(--cyan);--acc-soft:var(--cyan-soft)}
+.act--morph{--acc:var(--violet);--acc-soft:var(--violet-soft)}
+.act--rev{--acc:var(--rose);--acc-soft:var(--rose-soft)}
+.act--kill{--acc:var(--red);--acc-soft:var(--red-soft)}
+.act .act-no{color:var(--acc,#f2b03d)}
+.act .act-count{color:var(--acc,#f2b03d);border-color:var(--acc-soft,var(--amber-soft))}
+
+/* ---------- reveal (JS-gated so no-JS reads plainly) ---------- */
+.js .reveal{opacity:0;transform:translateY(20px);transition:opacity .75s cubic-bezier(.2,.6,.2,1),transform .75s cubic-bezier(.2,.6,.2,1)}
+.js .reveal.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){
+  .js .reveal{opacity:1;transform:none;transition:none}
+  html{scroll-behavior:auto}
+  *{animation-duration:.001s !important;transition-duration:.001s !important}
+}
+
+/* ---------- hero ---------- */
+.hero{padding:clamp(64px,9vw,110px) 0 0}
+.hero-grid-bg{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:-1}
+.hero-grid-bg::before{
+  content:"";position:absolute;inset:0;
+  background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);
+  background-size:44px 44px;
+  mask-image:radial-gradient(720px 460px at 62% 8%,#000 30%,transparent 78%);
+  -webkit-mask-image:radial-gradient(720px 460px at 62% 8%,#000 30%,transparent 78%);
+}
+.hero h1{
+  font-size:clamp(2.7rem,7vw,4.9rem);line-height:1.02;letter-spacing:-.5px;margin:18px 0 0;max-width:14ch;
+}
+.hero h1 em{font-style:italic;color:var(--amber)}
+.hero-meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+.chip{
+  font-family:var(--mono);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;
+  border:1px solid var(--line);border-radius:999px;padding:5px 12px;color:var(--muted);background:rgba(255,255,255,.02);
+}
+.chip.on{color:var(--green);border-color:rgba(95,211,154,.35);background:var(--green-soft)}
+.hero-cols{display:grid;grid-template-columns:1.25fr .9fr;gap:clamp(28px,5vw,64px);margin-top:44px;align-items:start}
+@media (max-width:880px){.hero-cols{grid-template-columns:1fr}}
+.ask{border-left:2px solid var(--amber);padding:4px 0 4px 22px}
+.ask blockquote{margin:0;font-family:var(--serif);font-size:clamp(1.15rem,2.2vw,1.45rem);line-height:1.45;color:var(--text)}
+.ask blockquote footer{font-family:var(--mono);font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin-top:12px}
+.ask .handoff{margin-top:22px;color:var(--muted);font-size:.96rem}
+.ask .handoff strong{color:var(--text);font-weight:600}
+.handoff .mode{
+  font-family:var(--mono);font-size:.74rem;color:var(--cyan);border:1px solid rgba(116,228,220,.3);
+  border-radius:6px;padding:2px 8px;background:var(--cyan-soft);white-space:nowrap;
+}
+
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-top:54px}
+@media (max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}}
+.stat{background:var(--bg-2);padding:18px 16px 16px}
+.stat b{display:block;font-family:var(--serif);font-size:clamp(1.6rem,3vw,2.2rem);font-weight:600;color:var(--text);line-height:1}
+.stat span{display:block;font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-top:8px}
+.stat:nth-child(1) b{color:var(--amber)}
+
+/* ---------- the interactive matrix ---------- */
+.lab{margin-top:clamp(56px,8vw,88px)}
+.lab-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:14px;margin-bottom:20px}
+.lab-head h3{font-size:clamp(1.25rem,2.4vw,1.6rem)}
+.lab-head p{color:var(--faint);font-size:.9rem}
+.matrix-wrap{
+  display:grid;grid-template-columns:1.55fr 1fr;gap:22px;align-items:start;
+}
+@media (max-width:940px){.matrix-wrap{grid-template-columns:1fr}}
+.matrix-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel),var(--bg-2))}
+.matrix{min-width:600px;padding:10px 18px 18px}
+.mrow{display:grid;grid-template-columns:minmax(190px,1.25fr) repeat(3,minmax(88px,1fr));align-items:center;gap:6px;padding:3px 6px;border-radius:8px;transition:background .18s}
+.mrow:hover{background:rgba(255,255,255,.028)}
+.mhead{padding:12px 6px 10px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.mhead .mlabel{font-family:var(--mono);font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+.mcol{
+  display:flex;align-items:center;justify-content:center;gap:7px;cursor:default;
+  font-family:var(--mono);font-size:.78rem;color:var(--muted);padding:6px 4px;border-radius:8px;transition:background .2s,color .2s;
+}
+.mcol:hover{background:rgba(255,255,255,.05)}
+.mcol .rdot{width:8px;height:8px;border-radius:50%;flex:none}
+.mcol[data-role=admin] .rdot{background:var(--amber)}
+.mcol[data-role=editor] .rdot{background:var(--cyan)}
+.mcol[data-role=member] .rdot{background:var(--violet)}
+.mcol.active{color:var(--text);box-shadow:inset 0 -1px 0 currentColor}
+.mcol[data-count]::after{content:attr(data-count);font-size:.64rem;color:var(--faint);border:1px solid var(--line);border-radius:999px;padding:0 6px;margin-left:2px}
+.mgroup{grid-column:1/-1;font-family:var(--mono);font-size:.66rem;letter-spacing:.2em;text-transform:uppercase;color:var(--acc,#74e4dc);padding:14px 6px 4px;opacity:.9}
+.mlabel{font-family:var(--mono);font-size:.8rem;color:var(--text)}
+.mlabel small{color:var(--faint);margin-left:8px;font-size:.68rem}
+.cell{display:flex;justify-content:center;padding:2px 0;border-radius:8px;transition:background .18s}
+.cell.col-on{background:rgba(255,255,255,.05)}
+.cell input{
+  appearance:none;-webkit-appearance:none;margin:0;width:22px;height:22px;border:1px solid var(--line-2);border-radius:7px;
+  background:rgba(255,255,255,.03);cursor:pointer;display:block;transition:border-color .18s,box-shadow .18s,background-color .18s;
+}
+.cell input:hover{border-color:var(--amber);box-shadow:0 0 0 4px var(--amber-soft)}
+.cell input:checked{
+  background-color:var(--green-soft);border-color:rgba(95,211,154,.65);
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235fd39a' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12.6l4.4 4.4L19 7.4'/></svg>");
+  background-size:15px;background-position:center;background-repeat:no-repeat;
+}
+.cell.locked input{cursor:not-allowed}
+.cell.locked input:hover{border-color:rgba(242,176,61,.6);box-shadow:0 0 0 4px var(--amber-soft)}
+.cell.locked input:checked{
+  background-color:var(--amber-soft);border-color:rgba(242,176,61,.6);
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f2b03d' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12.6l4.4 4.4L19 7.4'/></svg>");
+}
+.matrix-note{padding:12px 18px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:8px 22px;font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;color:var(--faint)}
+.matrix-note i{font-style:normal;display:inline-flex;align-items:center;gap:7px}
+.matrix-note .sw{width:12px;height:12px;border-radius:4px;display:inline-block}
+
+/* ---------- preview phone ---------- */
+.preview{display:flex;flex-direction:column;gap:16px}
+.pv-tabs{display:flex;gap:6px}
+.pv-tab{
+  font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;
+  background:transparent;border:1px solid var(--line);border-radius:8px;padding:7px 13px;color:var(--faint);cursor:pointer;transition:.2s;
+}
+.pv-tab:hover{color:var(--text);border-color:var(--line-2)}
+.pv-tab[aria-pressed=true]{color:var(--bg);background:var(--amber);border-color:var(--amber);font-weight:700}
+.phone{
+  border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--panel);
+  box-shadow:0 24px 60px -30px rgba(0,0,0,.8);
+}
+.phone-bar{display:flex;gap:6px;align-items:center;padding:11px 15px;border-bottom:1px solid var(--line);background:var(--panel-2)}
+.phone-bar i{width:9px;height:9px;border-radius:50%;background:var(--line-2);display:block}
+.phone-bar span{font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-left:8px}
+.app-side{padding:14px 12px 18px;min-height:308px}
+.app-brand{display:flex;align-items:center;gap:9px;padding:6px 9px 14px;font-family:var(--mono);font-size:.78rem;color:var(--muted);letter-spacing:.06em}
+.app-brand b{color:var(--text);font-weight:600}
+.app-section{font-family:var(--mono);font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);padding:12px 9px 6px}
+.nav-item{
+  display:flex;align-items:center;gap:11px;padding:8px 9px;border-radius:9px;color:var(--muted);font-size:.9rem;
+  transition:opacity .25s,transform .25s;
+}
+.nav-item svg{flex:none;opacity:.75}
+.nav-item.on{color:var(--text);background:rgba(255,255,255,.045)}
+.nav-item.on svg{opacity:1}
+.nav-item.off{opacity:0;transform:translateX(-8px);pointer-events:none;height:0;padding-top:0;padding-bottom:0;margin:0;overflow:hidden}
+.app-hidden{padding:14px 9px 0;font-family:var(--mono);font-size:.66rem;color:var(--faint);letter-spacing:.06em}
+.app-hidden b{color:var(--red);font-weight:500}
+.app-empty{
+  margin:6px 9px;padding:14px;border:1px dashed rgba(240,106,93,.4);border-radius:10px;
+  font-size:.82rem;color:var(--red);display:none;
+}
+.app-empty.show{display:block}
+.pv-keys{border:1px solid var(--line);border-radius:14px;background:var(--bg-2);padding:15px 16px}
+.pv-keys h4{font-family:var(--mono);font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);font-weight:500;margin-bottom:10px}
+.pv-keys h4 b{color:var(--green);font-weight:500}
+.keychips{display:flex;flex-wrap:wrap;gap:6px}
+.keychips code{white-space:normal}
+.keychips .star{color:var(--amber);border-color:rgba(242,176,61,.35);background:var(--amber-soft)}
+</style>
+<style>
+/* ---------- ACT I : the question wall ---------- */
+.hmw-wall{columns:3;column-gap:18px;margin-top:44px}
+@media (max-width:960px){.hmw-wall{columns:2}}
+@media (max-width:620px){.hmw-wall{columns:1}}
+.hmw{
+  break-inside:avoid;position:relative;border:1px solid var(--line);border-radius:13px;background:linear-gradient(165deg,var(--panel),var(--bg-2));
+  padding:17px 17px 15px 17px;margin:0 0 18px;transition:transform .25s,border-color .25s,background .25s;
+}
+.hmw::before{
+  content:attr(data-n);position:absolute;top:12px;right:13px;font-family:var(--mono);font-size:.62rem;color:var(--faint);letter-spacing:.1em;
+}
+.hmw em{font-style:normal;font-family:var(--mono);font-size:.64rem;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan);opacity:.85}
+.hmw p{margin-top:7px;font-family:var(--serif);font-size:1.02rem;line-height:1.42;color:var(--text)}
+.hmw:hover{transform:translateY(-3px);border-color:rgba(116,228,220,.4)}
+.hmw.seed p{color:var(--amber)}
+.hmw.seed{border-color:rgba(242,176,61,.35)}
+.hmw-note{margin-top:6px;font-family:var(--mono);font-size:.7rem;color:var(--faint);letter-spacing:.06em}
+.hmw-note b{color:var(--amber);font-weight:500}
+
+/* ---------- ACT II : the lattice ---------- */
+.lattice{margin-top:44px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--bg-2)}
+.prow{display:grid;grid-template-columns:minmax(180px,.85fr) 2fr;gap:16px;padding:15px 18px;border-bottom:1px solid var(--line);align-items:start}
+.prow:last-child{border-bottom:0}
+.prow:hover{background:rgba(255,255,255,.022)}
+@media (max-width:720px){.prow{grid-template-columns:1fr}}
+.pid{font-family:var(--mono);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--violet)}
+.pid b{display:block;color:var(--text);font-size:.8rem;letter-spacing:.06em;text-transform:none;font-weight:600;margin-top:4px}
+.opts{display:flex;flex-wrap:wrap;gap:7px}
+.opt{
+  font-family:var(--mono);font-size:.72rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;
+  padding:4px 11px;background:rgba(255,255,255,.02);transition:.2s;display:inline-flex;align-items:center;gap:6px;
+}
+.opt:hover{color:var(--text);border-color:var(--line-2)}
+.opt.win{
+  color:var(--amber);border-color:rgba(242,176,61,.55);background:var(--amber-soft);font-weight:600;
+  box-shadow:0 0 0 3px rgba(242,176,61,.06);
+}
+.opt.win::before{content:"✓";font-size:.7em}
+.lattice-cap{padding:13px 18px;border-top:1px solid var(--line);font-family:var(--mono);font-size:.68rem;letter-spacing:.1em;color:var(--faint)}
+.lattice-cap b{color:var(--amber);font-weight:600}
+
+.combos{margin-top:34px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media (max-width:960px){.combos{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:620px){.combos{grid-template-columns:1fr}}
+.combo{
+  border:1px solid var(--line);border-radius:14px;padding:19px 18px;background:linear-gradient(170deg,var(--panel),var(--bg-2));
+  position:relative;overflow:hidden;transition:transform .25s,border-color .25s;
+}
+.combo:hover{transform:translateY(-3px);border-color:rgba(177,140,245,.45)}
+.combo .tag{font-family:var(--mono);font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--violet)}
+.combo h4{font-size:1.08rem;margin-top:9px;line-height:1.3}
+.combo p{margin-top:9px;color:var(--muted);font-size:.9rem}
+.combo p code{white-space:normal}
+.combo.crown{border-color:rgba(242,176,61,.4)}
+.combo.crown::after{
+  content:"wears three hats";position:absolute;top:14px;right:14px;font-family:var(--mono);font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--amber);border:1px solid rgba(242,176,61,.4);border-radius:999px;padding:2px 8px;background:var(--amber-soft);
+}
+.combo-more{margin-top:26px;border:1px dashed var(--line-2);border-radius:14px;padding:18px 20px}
+.combo-more h4{font-family:var(--mono);font-size:.68rem;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);font-weight:500}
+.combo-more ul{margin:12px 0 0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(2,1fr);gap:8px 26px}
+@media (max-width:720px){.combo-more ul{grid-template-columns:1fr}}
+.combo-more li{font-size:.9rem;color:var(--muted);padding-left:16px;position:relative}
+.combo-more li::before{content:"→";position:absolute;left:0;color:var(--violet);font-family:var(--mono);font-size:.8rem}
+.combo-more li.parked{opacity:.62}
+.combo-more li.parked::before{content:"⏸";color:var(--faint)}
+.combo-more li em{font-style:normal;font-family:var(--mono);font-size:.68rem;color:var(--faint);letter-spacing:.06em}
+
+/* ---------- ACT III : reversals ---------- */
+.revgrid{margin-top:44px;display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+@media (max-width:800px){.revgrid{grid-template-columns:1fr}}
+.rev{
+  --card-bg:linear-gradient(168deg,var(--panel),var(--bg-2));--card-fg:var(--text);--card-mut:var(--muted);--card-line:var(--line);
+  border:1px solid var(--card-line);border-radius:14px;padding:19px 19px 17px;background:var(--card-bg);color:var(--card-fg);
+  transition:background .3s,color .3s,border-color .3s,transform .3s;cursor:default;
+}
+.rev:hover{
+  --card-bg:linear-gradient(168deg,#f3eee4,#e7e0d2);--card-fg:#171a21;--card-mut:#5c6270;--card-line:rgba(23,26,33,.25);
+  transform:translateY(-3px);
+}
+.rev .was{font-family:var(--mono);font-size:.76rem;color:var(--card-mut);text-decoration:line-through;text-decoration-color:rgba(240,106,93,.75);word-break:break-word}
+.rev .arrow{display:block;color:var(--rose);font-family:var(--mono);font-size:.72rem;margin:9px 0 7px;letter-spacing:.1em}
+.rev:hover .arrow{color:#a3365b}
+.rev:hover .now code{color:#7d5410;background:rgba(242,176,61,.2);border-color:rgba(125,84,16,.35)}
+.rev:hover .verdict.v-keep{color:#1d7a4f;border-color:rgba(29,122,79,.6)}
+.rev:hover .verdict.v-mix{color:#96660d;border-color:rgba(150,102,13,.6)}
+.rev:hover .verdict.v-defer{color:#5c6270;border-color:rgba(92,98,112,.6)}
+.rev:hover .verdict.v-guard{color:#0f766e;border-color:rgba(15,118,110,.6)}
+.rev .now{font-size:.94rem;line-height:1.5;color:var(--card-fg)}
+.rev .now b{font-weight:600}
+.verdict{
+  display:inline-block;margin-top:13px;font-family:var(--mono);font-size:.6rem;letter-spacing:.18em;text-transform:uppercase;
+  border:1px solid;border-radius:5px;padding:3px 8px;transform:rotate(-1.5deg);
+}
+.verdict.v-keep{color:var(--green);border-color:rgba(95,211,154,.45);background:var(--green-soft)}
+.verdict.v-mix{color:var(--amber);border-color:rgba(242,176,61,.45);background:var(--amber-soft)}
+.verdict.v-defer{color:var(--faint);border-color:var(--line-2);background:rgba(255,255,255,.03)}
+.verdict.v-guard{color:var(--cyan);border-color:rgba(116,228,220,.45);background:var(--cyan-soft)}
+.rev:hover .verdict{background:transparent}
+
+/* ---------- ACT IV : kill the jewel ---------- */
+.jewel-stage{
+  margin-top:44px;border:1px solid var(--line);border-radius:18px;position:relative;overflow:hidden;
+  background:
+    radial-gradient(420px 240px at 50% 0%,rgba(240,106,93,.07),transparent 70%),
+    linear-gradient(180deg,var(--panel),var(--bg-2));
+  display:grid;grid-template-columns:300px 1fr;gap:0;
+}
+@media (max-width:860px){.jewel-stage{grid-template-columns:1fr}}
+.jewel-art{display:flex;align-items:center;justify-content:center;padding:34px;border-right:1px solid var(--line);position:relative}
+@media (max-width:860px){.jewel-art{border-right:0;border-bottom:1px solid var(--line)}}
+.jewel-art svg{max-width:220px;width:100%;height:auto}
+.jewel-target{padding:26px 28px}
+.jewel-target .eyebrow{color:var(--red)}
+.jewel-target h3{font-size:clamp(1.3rem,2.6vw,1.7rem);margin-top:10px}
+.jewel-target h3 code{white-space:normal;font-size:.8em}
+.jewel-target p{color:var(--muted);margin-top:12px;font-size:.96rem;max-width:52ch}
+.kills{margin-top:26px}
+.kill{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 18px;align-items:start;
+  border:1px solid var(--line);border-radius:13px;padding:16px 18px;background:var(--bg-2);margin-bottom:12px;transition:border-color .22s,transform .22s;
+}
+.kill:hover{transform:translateX(4px)}
+.kill .k-what{font-family:var(--mono);font-size:.8rem;color:var(--text);letter-spacing:.02em}
+.kill .k-what b{color:var(--red);font-weight:600}
+.kill .k-why{grid-column:1/-1;color:var(--muted);font-size:.92rem;margin-top:2px}
+.stamp{
+  font-family:var(--mono);font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;font-weight:700;
+  border:2px solid;border-radius:7px;padding:5px 10px;transform:rotate(-4deg);white-space:nowrap;
+}
+.stamp.s-surv{color:var(--green);border-color:rgba(95,211,154,.55);background:var(--green-soft)}
+.stamp.s-rej{color:var(--red);border-color:rgba(240,106,93,.55);background:var(--red-soft)}
+.stamp.s-acc{color:var(--amber);border-color:rgba(242,176,61,.55);background:var(--amber-soft)}
+.stamp.s-less{color:var(--cyan);border-color:rgba(116,228,220,.55);background:var(--cyan-soft)}
+.kill.lesson{border-style:dashed;border-color:rgba(116,228,220,.4)}
+.kill.lesson .k-what b{color:var(--cyan)}
+
+/* ---------- ground truth ---------- */
+.ground{padding-top:clamp(72px,10vw,120px)}
+.gt-grid{margin-top:40px;display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+@media (max-width:800px){.gt-grid{grid-template-columns:1fr}}
+.gt{border:1px solid var(--line);border-left:2px solid var(--amber);border-radius:12px;padding:17px 19px;background:var(--bg-2)}
+.gt h4{font-family:var(--mono);font-size:.74rem;letter-spacing:.1em;color:var(--amber);font-weight:600}
+.gt p{margin-top:8px;color:var(--muted);font-size:.92rem}
+.gt p code{white-space:normal}
+.gt.q{border-left-color:var(--cyan)}
+.gt.q h4{color:var(--cyan)}
+.gt.q h4::before{content:"? ";opacity:.8}
+
+/* ---------- convergence ---------- */
+.conv{padding-top:clamp(72px,10vw,128px)}
+.funnel{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin-top:40px}
+.fstep{display:flex;align-items:baseline;gap:10px}
+.fstep b{font-family:var(--serif);font-size:clamp(1.7rem,3.4vw,2.5rem);font-weight:600;line-height:1}
+.fstep span{font-family:var(--mono);font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+.farrow{font-family:var(--mono);color:var(--faint);font-size:1.1rem}
+.fstep:last-child b{color:var(--amber)}
+
+.clusters{margin-top:44px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media (max-width:960px){.clusters{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:620px){.clusters{grid-template-columns:1fr}}
+.cluster{border:1px solid var(--line);border-top:2px solid var(--green);border-radius:13px;padding:19px 18px;background:linear-gradient(172deg,var(--panel),var(--bg-2));transition:transform .25s,border-color .25s}
+.cluster:hover{transform:translateY(-3px)}
+.cluster .cl-id{font-family:var(--mono);font-size:.62rem;letter-spacing:.22em;color:var(--green);text-transform:uppercase}
+.cluster h4{margin-top:8px;font-size:1.12rem}
+.cluster p{margin-top:10px;color:var(--muted);font-size:.9rem}
+.cluster.parked{border-top-color:var(--faint)}
+.cluster.parked .cl-id{color:var(--faint)}
+.cluster.parked h4{color:var(--muted)}
+
+/* ---------- gate demo ---------- */
+.gatedemo{margin-top:44px;border:1px solid var(--line);border-radius:18px;background:linear-gradient(180deg,var(--panel),var(--bg-2));padding:clamp(18px,3vw,30px)}
+.gd-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:14px}
+.gd-head h3{font-size:clamp(1.2rem,2.4vw,1.5rem)}
+.gd-head p{color:var(--faint);font-size:.88rem}
+.gd-controls{margin-top:20px;display:flex;flex-wrap:wrap;gap:14px 26px;align-items:flex-end}
+.gd-controls fieldset{border:0;margin:0;padding:0}
+.gd-controls legend{font-family:var(--mono);font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);padding:0 0 8px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg label{
+  font-family:var(--mono);font-size:.74rem;color:var(--muted);border:1px solid var(--line);border-radius:8px;
+  padding:7px 12px;cursor:pointer;transition:.2s;background:rgba(255,255,255,.02);user-select:none;
+}
+.seg label:hover{color:var(--text);border-color:var(--line-2)}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg input:checked + span{color:var(--bg)}
+.seg label:has(input:checked){background:var(--amber);border-color:var(--amber);color:var(--bg);font-weight:700}
+.seg label:has(input:focus-visible){outline:2px solid var(--amber);outline-offset:2px}
+.runbtn{
+  margin-left:auto;background:var(--amber);color:#151007;border:0;border-radius:10px;padding:11px 20px;
+  font-family:var(--mono);font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;font-weight:700;cursor:pointer;
+  transition:transform .18s,box-shadow .18s,opacity .18s;
+}
+.runbtn:hover{transform:translateY(-2px);box-shadow:0 10px 26px -10px rgba(242,176,61,.7)}
+.runbtn:disabled{opacity:.55;cursor:wait;transform:none}
+@media (max-width:720px){.runbtn{margin-left:0;width:100%}}
+.gd-track{margin-top:26px;display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:12px;align-items:stretch}
+@media (max-width:860px){.gd-track{grid-template-columns:1fr}.gd-arrow{transform:rotate(90deg);justify-content:center}}
+.gate{
+  border:1px solid var(--line);border-radius:13px;padding:16px 16px 14px;background:var(--bg-2);position:relative;
+  transition:border-color .25s,background .25s,transform .25s;
+}
+.gate .g-name{font-family:var(--mono);font-size:.8rem;color:var(--text);font-weight:600;letter-spacing:.02em}
+.gate .g-role{font-family:var(--mono);font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin-top:4px}
+.gate p{font-size:.84rem;color:var(--muted);margin-top:9px;line-height:1.5}
+.g-state{
+  display:inline-block;margin-top:11px;font-family:var(--mono);font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:3px 8px;transition:.25s;
+}
+.gate.active{border-color:var(--amber);transform:translateY(-3px);box-shadow:0 0 0 4px var(--amber-soft)}
+.gate.pass{border-color:rgba(95,211,154,.6)}
+.gate.pass .g-state{color:var(--green);border-color:rgba(95,211,154,.5);background:var(--green-soft)}
+.gate.deny{border-color:rgba(240,106,93,.7)}
+.gate.deny .g-state{color:var(--red);border-color:rgba(240,106,93,.55);background:var(--red-soft)}
+.gate.last{background:linear-gradient(180deg,rgba(242,176,61,.05),var(--bg-2))}
+.gd-arrow{display:flex;align-items:center;justify-content:center;color:var(--faint);font-family:var(--mono);transition:color .3s}
+.gd-arrow.lit{color:var(--amber)}
+.gd-verdict{
+  margin-top:22px;border:1px solid var(--line);border-radius:13px;padding:17px 19px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;
+  background:rgba(255,255,255,.02);transition:border-color .3s;
+}
+.gd-verdict .code{font-family:var(--mono);font-size:1.05rem;font-weight:700;letter-spacing:.04em;color:var(--muted)}
+.gd-verdict p{color:var(--muted);font-size:.92rem;flex:1;min-width:240px}
+.gd-verdict.ok{border-color:rgba(95,211,154,.5)}
+.gd-verdict.ok .code{color:var(--green)}
+.gd-verdict.no{border-color:rgba(240,106,93,.55)}
+.gd-verdict.no .code{color:var(--red)}
+.gd-foot{margin-top:16px;font-family:var(--mono);font-size:.7rem;color:var(--faint);letter-spacing:.08em}
+.gd-foot b{color:var(--amber);font-weight:500}
+
+/* ---------- MoSCoW ---------- */
+.moscow{padding-top:clamp(72px,10vw,120px)}
+.tiers{margin-top:44px;display:grid;gap:16px}
+.tier{border:1px solid var(--line);border-radius:15px;overflow:hidden;background:var(--bg-2)}
+.tier-head{display:flex;align-items:center;gap:12px;padding:15px 20px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.025)}
+.tier-head .t-name{font-family:var(--mono);font-size:.78rem;letter-spacing:.22em;text-transform:uppercase;font-weight:700}
+.tier-head .t-sub{font-family:var(--mono);font-size:.66rem;color:var(--faint);letter-spacing:.08em;margin-left:auto}
+.tier.must{border-color:rgba(95,211,154,.35)}
+.tier.must .t-name{color:var(--green)}
+.tier.should .t-name{color:var(--amber)}
+.tier.could .t-name{color:var(--cyan)}
+.tier.wont{border-color:rgba(240,106,93,.3)}
+.tier.wont .t-name{color:var(--red)}
+.tier ul{margin:0;padding:16px 20px 18px;list-style:none;display:grid;grid-template-columns:repeat(3,1fr);gap:9px 24px}
+@media (max-width:900px){.tier ul{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:600px){.tier ul{grid-template-columns:1fr}}
+.tier li{font-size:.92rem;color:var(--muted);padding-left:22px;position:relative}
+.tier li b{color:var(--text);font-weight:600}
+.tier.must li::before{
+  content:"";position:absolute;left:0;top:5px;width:13px;height:13px;border-radius:4px;border:1px solid rgba(95,211,154,.65);background:var(--green-soft);
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235fd39a' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12.6l4.4 4.4L19 7.4'/></svg>");
+  background-size:9px;background-position:center;background-repeat:no-repeat;
+}
+.tier.should li::before{content:"→";position:absolute;left:0;color:var(--amber);font-family:var(--mono)}
+.tier.could li::before{content:"○";position:absolute;left:0;color:var(--cyan)}
+.tier.wont li::before{content:"⏸";position:absolute;left:0;color:var(--red);font-family:var(--mono);font-size:.8rem}
+.tier.wont li{color:var(--faint)}
+
+/* ---------- finale ---------- */
+.finale{
+  margin-top:clamp(84px,12vw,150px);padding:clamp(60px,9vw,110px) 0 clamp(60px,8vw,90px);
+  border-top:1px solid var(--line);position:relative;overflow:hidden;text-align:center;
+}
+.finale::before{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(640px 320px at 50% 12%,rgba(242,176,61,.09),transparent 70%);
+}
+.keys-scatter{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:38px;perspective:600px}
+.keys-scatter code{font-size:.78rem}
+.keys-scatter code:nth-child(1){transform:translate(-52px,-16px) rotate(-7deg)}
+.keys-scatter code:nth-child(2){transform:translate(38px,-24px) rotate(5deg)}
+.keys-scatter code:nth-child(3){transform:translate(-20px,18px) rotate(3deg)}
+.keys-scatter code:nth-child(4){transform:translate(58px,10px) rotate(-4deg)}
+.keys-scatter code:nth-child(5){transform:translate(-64px,6px) rotate(6deg)}
+.keys-scatter code:nth-child(6){transform:translate(24px,26px) rotate(-6deg)}
+.js .keys-scatter code{transition:transform 1s cubic-bezier(.2,.7,.2,1),opacity 1s;opacity:.45}
+.js .keys-scatter.in code{transform:none;opacity:1}
+.finale .eyebrow{color:var(--amber)}
+.sent{
+  font-family:var(--serif);font-size:clamp(1.6rem,4.4vw,2.9rem);line-height:1.32;letter-spacing:.1px;
+  max-width:22ch;margin:26px auto 0;position:relative;
+}
+.sent .w{display:inline-block}
+.js .sent .w{opacity:0;transform:translateY(14px);transition:opacity .6s ease,transform .6s ease}
+.js .sent.in .w{opacity:1;transform:none}
+.sent .k{
+  font-family:var(--mono);font-size:.72em;color:var(--amber);background:var(--amber-soft);
+  border:1px solid rgba(242,176,61,.35);border-radius:7px;padding:.06em .3em;white-space:nowrap;
+}
+.sent .yes{color:var(--green);font-style:italic}
+.finale-hats{margin-top:52px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;text-align:left}
+@media (max-width:820px){.finale-hats{grid-template-columns:1fr}}
+.hat{border:1px solid var(--line);border-radius:13px;padding:18px 18px 16px;background:var(--bg-2)}
+.hat .h-n{font-family:var(--mono);font-size:.62rem;letter-spacing:.22em;text-transform:uppercase;color:var(--amber)}
+.hat p{margin-top:9px;font-size:.92rem;color:var(--muted)}
+.hat p b{color:var(--text);font-weight:600}
+.finale-through{margin:52px auto 0;max-width:760px;font-family:var(--serif);font-size:clamp(1.05rem,2vw,1.3rem);color:var(--muted);font-style:italic;line-height:1.6}
+.finale-through b{color:var(--text);font-weight:600}
+
+/* ---------- footer ---------- */
+footer.site{border-top:1px solid var(--line);padding:34px 0 60px;color:var(--faint)}
+footer.site .wrap{display:flex;flex-wrap:wrap;gap:12px 30px;align-items:center;font-family:var(--mono);font-size:.68rem;letter-spacing:.1em;text-transform:uppercase}
+footer.site .dotsep::before{content:"·";margin:0 10px;color:var(--line-2)}
+footer.site .right{margin-left:auto}
+.status{color:var(--green);display:inline-flex;align-items:center;gap:7px}
+.status::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 10px rgba(95,211,154,.8)}
+
+/* ---------- toast ---------- */
+.toast{
+  position:fixed;left:50%;bottom:26px;transform:translate(-50%,16px);z-index:80;
+  background:#1b1f2a;border:1px solid rgba(242,176,61,.45);border-radius:11px;padding:12px 18px;
+  font-family:var(--mono);font-size:.76rem;color:var(--text);max-width:min(92vw,520px);
+  opacity:0;pointer-events:none;transition:opacity .3s,transform .3s;box-shadow:0 18px 50px -18px rgba(0,0,0,.9);
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast b{color:var(--amber);font-weight:600}
+</style>
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"><span id="progressBar"></span></div>
+
+<header class="topnav">
+  <div class="wrap">
+    <div class="brand">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f2b03d" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+        <circle cx="8" cy="8.5" r="4.2"></circle><path d="M11.2 11.7 L20 20.5 M16.6 17.1l2.6-2.6 M18.9 19.4l2.2-2.2"></path>
+      </svg>
+      rbac · brainstorm keepsake
+    </div>
+    <nav aria-label="Session chapters">
+      <a href="#ask">the ask</a>
+      <a href="#act1">I · hmw</a>
+      <a href="#act2">II · morph</a>
+      <a href="#act3">III · reverse</a>
+      <a href="#act4">IV · kill</a>
+      <a href="#ground">ground</a>
+      <a href="#converge">converge</a>
+      <a href="#moscow">moscow</a>
+      <a href="#finale">one sentence</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<!-- ================= THE ASK ================= -->
+<section class="hero" id="ask">
+  <div class="hero-grid-bg" aria-hidden="true"></div>
+  <div class="wrap">
+    <p class="eyebrow reveal">initiative auth-system · session brainstorm-rbac-roles-permissions · 2026-11-03</p>
+    <h1 class="reveal">Roles &amp; <em>Permissions</em></h1>
+    <p class="lede reveal" style="margin-top:22px">An autonomous run of asking who gets in, where they may go, and what they are allowed to touch — until the answer fit in one sentence.</p>
+    <div class="hero-meta reveal">
+      <span class="chip on">mode: ideate-for-me</span>
+      <span class="chip">stance: creative partner → handed over</span>
+      <span class="chip">4 techniques</span>
+      <span class="chip">106 ideas</span>
+      <span class="chip">status: build-ready</span>
+    </div>
+
+    <div class="hero-cols">
+      <div class="ask reveal">
+        <blockquote>
+          “Role &amp; Permission (RBAC) feature: role master page, permission matrix page, sidebar menu visibility, page access, CRUD action control.”
+          <footer>— the brief, as written in the session memlog</footer>
+        </blockquote>
+        <p class="handoff">
+          The session opened as a <strong>Creative Partner</strong> dialogue — then the user handed over the wheel:
+          switch to <span class="mode">Ideate-for-me</span>, run every technique, converge, and come back with a
+          <strong>build-ready design</strong>. Four passes, six clusters, one sentence. Nothing in between was asked for again.
+        </p>
+      </div>
+
+      <div class="stats reveal" aria-label="session shape">
+        <div class="stat"><b>106</b><span>ideas logged</span></div>
+        <div class="stat"><b>25</b><span>how might we</span></div>
+        <div class="stat"><b>13×18</b><span>dials × combos</span></div>
+        <div class="stat"><b>18</b><span>reversals</span></div>
+        <div class="stat"><b>1</b><span>sentence left</span></div>
+      </div>
+    </div>
+
+    <!-- ===== interactive matrix ===== -->
+    <div class="lab reveal" id="matrixLab">
+      <div class="lab-head">
+        <h3>The artifact this session kept circling</h3>
+        <p>a live permission matrix — tick a box, watch the sidebar obey. the amber column is the wildcard role; try to edit it anyway.</p>
+      </div>
+
+      <div class="matrix-wrap">
+        <div class="matrix-scroll">
+          <div class="matrix" id="matrix">
+            <div class="mrow mhead">
+              <div class="mlabel">resource.action</div>
+              <div class="mcol" data-role="admin" data-count="∗ wildcard"><span class="rdot"></span>admin</div>
+              <div class="mcol" data-role="editor" data-count="8 keys"><span class="rdot"></span>editor</div>
+              <div class="mcol" data-role="member" data-count="5 keys"><span class="rdot"></span>member</div>
+            </div>
+
+            <div class="mrow"><div class="mgroup" style="--acc:var(--violet)">workspace pages · from navigation.ts</div></div>
+            <div class="mrow"><div class="mlabel">home.view</div>
+              <label class="cell locked" data-role="admin"><input type="checkbox" checked disabled data-role="admin" data-key="home.view" aria-label="admin home.view"></label>
+              <label class="cell" data-role="editor"><input type="checkbox" checked data-role="editor" data-key="home.view" aria-label="editor home.view"></label>
+              <label class="cell" data-role="member"><input type="checkbox" checked data-role="member" data-key="home.view" aria-label="member home.view"></label>
+            </div>
+            <div class="mrow"><div class="mlabel">ask-ai.view</div>
+              <label class="cell locked" data-role="admin"><input type="checkbox" checked disabled data-role="admin" data-key="ask-ai.view" aria-label="admin ask-ai.view"></label>
+              <label class="cell" data-role="editor"><input type="checkbox" checked data-role="editor" data-key="ask-ai.view" aria-label="editor ask-ai.view"></label>
+              <label class="cell" data-role="member"><input type="checkbox" checked data-role="member" data-key="ask-ai.view" aria-label="member ask-ai.view"></label>
+            </div>
+            <div class="mrow"><div class="mlabel">ask-ai.use <small>send messages</small></div>
+              <label class="cell locked" data-role="admin"><input type="checkbox" checked disabled data-role="admin" data-key="ask-ai.use" aria-label="admin ask-ai.use"></label>
+              <label class="cell" data-role="editor"><input type="checkbox" checked data-role="editor" data-key="ask-ai.use" aria-label="editor ask-ai.use"></label>
+              <label class="cell" data-role="member"><input type="checkbox" checked data-role="member" data-key="ask-ai.use" aria-label="member ask-ai.use"></label>
+            </div>
+            <div class="mrow"><div class="mlabel">agent-board.view</div>
+              <label class="cell locked" data-role="admin"><input type="checkbox" checked disabled data-role="admin" data-key="agent-board.view" aria-label="admin agent-board.view"></label>
+              <label class="cell" data-role="editor"><input type="checkbox" checked data-role="editor" data-key="agent-board.view" aria-label="editor agent-board.view"></label>
+              <label class="cell" data-role="member"><input type="checkbox" checked data-role="member" data-key="agent-board.view" aria-label="member agent-board.view"></label>
+            </div>
+            <div class="mrow"><div class="mlabel">watching.view <small>special route</small></div>
+              <label class="cell locked" data-role="admin"><input type="checkbox" checked disabled data-role="admin" data-key="watching.view" aria-label="admin watching.view"></label>
+              <label class="cell" data-role="editor"><input type="checkbox" checked data-role="editor" data-key="watching.view" aria-label="editor watching.view"></label>
+              <label class="cell" data-role="member"><input type="checkbox" checked data-role="member" data-key="watching.view" aria-label="member watching.view"></label>
+            </div>
+
+            <div class="mrow"><div class="mgroup" style="--acc:var(--cyan)">users · admin surface</div></div>
+            <div class="mrow"><div class="mlabel">users.view</div>
+              <label class="cell locked" data-role="admin"><input type="checkbox" checked disabled data-role="admin" data-key="users.view" aria-label="admin users.view"></label>
+              <label class="cell" data-role="editor"><input type="checkbox" checked data-role="editor" data-key="users.view" aria-label="editor users.view"></label>
+              <label class="cell" data-role="member"><input type="checkbox" data-role="member" data-key="users.view" aria-label="member users.view"></label>
+            </div>
+            <div class="mrow"><div class="mlabel">users.create</div>
+              <label class="cell locked" data-role="admin"><input type="checkbox" checked disabled data-role="admin" data-key="users.create" aria-label="admin users.create"></label>
+              <label class="cell" data-role="editor"><input type="checkbox" checked data-role="editor" data-key="users.create" aria-label="editor users.create"></label>
+              <label class="cell" data-role="member"><input type="checkbox" data-role="member" data-key="users.create" aria-label="member users.create"></label>
+            </div>
+            <div class="mrow"><div class="mlabel">users.update</div>
+              <label class="cell locked" data-role="admin"><input type="checkbox" checked disabled data-role="admin" data-key="users.update" aria-label="admin users.update"></label>
+              <label class="cell" data-role="editor"><input type="checkbox" checked data-role="editor" data-key="users.update" aria-label="editor users.update"></label>
+              <label class="cell" data-role="member"><input type="checkbox" data-role="member" data-key="users.update" aria-label="member users.update"></label>
+            </div>
+            <div class="mrow"><div class="mlabel">users.delete</div>
+              <label class="cell locked" data-role="admin"><input type="checkbox" checked disabled data-role="admin" data-key="users.delete" aria-label="admin users.delete"></label>
+              <label class="cell" data-role="editor"><input type="checkbox" data-role="editor" data-key="users.delete" aria-label="editor users.delete"></label>
+              <label class="cell" data-role="member"><input type="checkbox" data-role="member" data-key="users.delete" aria-label="member users.delete"></label>
+            </div>
+
+            <div class="mrow"><div class="mgroup" style="--acc:var(--amber)">roles · the feature itself</div></div>
+            <div class="mrow"><div class="mlabel">roles.view</div>
+              <label class="cell locked" data-role="admin"><input type="checkbox" checked disabled data-role="admin" data-key="roles.view" aria-label="admin roles.view"></label>
+              <label class="cell" data-role="editor"><input type="checkbox" data-role="editor" data-key="roles.view" aria-label="editor roles.view"></label>
+              <label class="cell" data-role="member"><input type="checkbox" data-role="member" data-key="roles.view" aria-label="member roles.view"></label>
+            </div>
+            <div class="mrow"><div class="mlabel">roles.manage</div>
+              <label class="cell locked" data-role="admin"><input type="checkbox" checked disabled data-role="admin" data-key="roles.manage" aria-label="admin roles.manage"></label>
+              <label class="cell" data-role="editor"><input type="checkbox" data-role="editor" data-key="roles.manage" aria-label="editor roles.manage"></label>
+              <label class="cell" data-role="member"><input type="checkbox" data-role="member" data-key="roles.manage" aria-label="member roles.manage"></label>
+            </div>
+
+            <div class="matrix-note">
+              <i><span class="sw" style="background:var(--amber-soft);border:1px solid rgba(242,176,61,.6)"></span> wildcard <b>*</b> — is_system, immutable</i>
+              <i><span class="sw" style="background:var(--green-soft);border:1px solid rgba(95,211,154,.6)"></span> grant stored as JSONB on the role row</i>
+              <i>seeded on ensureSchema v3</i>
+            </div>
+          </div>
+        </div>
+
+        <aside class="preview" aria-label="Live sidebar preview">
+          <div class="pv-tabs" role="group" aria-label="Preview as role">
+            <button class="pv-tab" type="button" data-role="admin" aria-pressed="false">admin</button>
+            <button class="pv-tab" type="button" data-role="editor" aria-pressed="false">editor</button>
+            <button class="pv-tab" type="button" data-role="member" aria-pressed="true">member</button>
+          </div>
+          <div class="phone">
+            <div class="phone-bar"><i></i><i></i><i></i><span>sidebar derives from permissions[]</span></div>
+            <div class="app-side">
+              <div class="app-brand">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9aa3b6" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"></rect><path d="M8 15l3-6 2 4 1.6-2.4L17 15"></path></svg>
+                <b>workspace</b>
+              </div>
+
+              <div class="app-section">workspace</div>
+              <div class="nav-item on" data-nav="home" data-key="home.view">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7v8a2 2 0 0 1-2 2h-4v-6h-4v6H6a2 2 0 0 1-2-2z"></path></svg>
+                Home
+              </div>
+              <div class="nav-item on" data-nav="ask-ai" data-key="ask-ai.view">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.6L19.5 10l-4.4 3.4L16.4 19 12 15.9 7.6 19l1.3-5.6L4.5 10l5.6-1.4z"></path></svg>
+                Ask AI
+              </div>
+              <div class="nav-item on" data-nav="agent-board" data-key="agent-board.view">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="4.4" height="14" rx="1.4"></rect><rect x="10" y="5" width="4.4" height="9" rx="1.4"></rect><rect x="16" y="5" width="4.4" height="17" rx="1.4" transform="translate(0 -3)"></rect></svg>
+                Agent Board
+              </div>
+              <div class="nav-item on" data-nav="watching" data-key="watching.view">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12z"></path><circle cx="12" cy="12" r="2.7"></circle></svg>
+                Watching
+              </div>
+
+              <div class="app-section">admin</div>
+              <div class="nav-item off" data-nav="users" data-key="users.view">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8.4" r="3.4"></circle><path d="M3.4 19.4c.7-3.2 2.9-4.8 5.6-4.8s4.9 1.6 5.6 4.8"></path><circle cx="17" cy="9.6" r="2.5"></circle><path d="M15.4 14.9c2.6-.3 4.7 1.2 5.2 4.1"></path></svg>
+                Users
+              </div>
+              <div class="nav-item off" data-nav="roles" data-key="roles.view">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8.5" r="4.2"></circle><path d="M11.2 11.7 L20 20.5 M16.6 17.1l2.6-2.6"></path></svg>
+                Roles
+              </div>
+
+              <div class="app-empty" id="appEmpty">This role would see an empty menu — every view permission is off. The 403 view would at least explain why.</div>
+              <div class="app-hidden" id="appHidden">hidden by permission: <b>users, roles</b></div>
+            </div>
+          </div>
+          <div class="pv-keys">
+            <h4><b>GET /api/auth/me</b> → permissions[]</h4>
+            <div class="keychips" id="keyChips" aria-live="polite"></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ACT I : HOW MIGHT WE ================= -->
+<section class="act act--hmw" id="act1">
+  <div class="wrap">
+    <header class="act-head reveal">
+      <div>
+        <p class="act-no">act i · first technique</p>
+        <h2>How might we</h2>
+        <p class="act-sub">Before any answers: twenty-five well-aimed questions. The coach mined the brief until the vein ran out — then carried all of them into the next room.</p>
+      </div>
+      <span class="act-count">25 questions</span>
+    </header>
+
+    <div class="hmw-wall">
+      <div class="hmw reveal" data-n="01"><em>how might we…</em><p>sidebar menu, page access, and API guards all derive from one source of truth, so they can never disagree</p></div>
+      <div class="hmw reveal" data-n="02"><em>how might we…</em><p>an admin grants edit-but-not-delete without reading any documentation</p></div>
+      <div class="hmw seed reveal" data-n="03"><em>how might we…</em><p>adding a new app page requires zero permission-schema changes — no migration</p></div>
+      <div class="hmw reveal" data-n="04"><em>how might we…</em><p>the matrix stays effortless at 5 roles yet does not collapse at 50</p></div>
+      <div class="hmw reveal" data-n="05"><em>how might we…</em><p>a permission change takes effect for an already-logged-in user without forced re-login</p></div>
+      <div class="hmw reveal" data-n="06"><em>how might we…</em><p>it is structurally impossible for the last admin to lock themselves out</p></div>
+      <div class="hmw reveal" data-n="07"><em>how might we…</em><p>the API layer is the only place allowed to say yes — UI hiding is just cosmetics</p></div>
+      <div class="hmw reveal" data-n="08"><em>how might we…</em><p>new actions beyond CRUD (export, approve, impersonate) need zero schema changes</p></div>
+      <div class="hmw reveal" data-n="09"><em>how might we…</em><p>a user can see <i>why</i> a button is disabled — which role would grant it</p></div>
+      <div class="hmw reveal" data-n="10"><em>how might we…</em><p>an audit trail remembers who changed which permission, and when</p></div>
+      <div class="hmw reveal" data-n="11"><em>how might we…</em><p>per-role permission testing stays cheap, with fixtures</p></div>
+      <div class="hmw reveal" data-n="12"><em>how might we…</em><p>a role sees a page, but only part of its data — own vs team vs all</p></div>
+      <div class="hmw reveal" data-n="13"><em>how might we…</em><p>permission keys stay stable forever while labels get translated</p></div>
+      <div class="hmw reveal" data-n="14"><em>how might we…</em><p>role inheritance without a confusing hierarchy UI</p></div>
+      <div class="hmw reveal" data-n="15"><em>how might we…</em><p>safe defaults are seeded, so the app is secure out of the box</p></div>
+      <div class="hmw reveal" data-n="16"><em>how might we…</em><p>permission editing itself cannot become a privilege-escalation vector</p></div>
+      <div class="hmw reveal" data-n="17"><em>how might we…</em><p>access is checked at the edge — the proxy — without touching the database</p></div>
+      <div class="hmw reveal" data-n="18"><em>how might we…</em><p>the JWT stays small while carrying enough authorization state</p></div>
+      <div class="hmw reveal" data-n="19"><em>how might we…</em><p>per-user exceptions layer on top of roles without exploding the model</p></div>
+      <div class="hmw reveal" data-n="20"><em>how might we…</em><p>a role can be deprecated safely, by finding and migrating its attached users</p></div>
+      <div class="hmw reveal" data-n="21"><em>how might we…</em><p>an admin previews what a role will actually see <i>before</i> saving</p></div>
+      <div class="hmw reveal" data-n="22"><em>how might we…</em><p>different teams and departments get different menus</p></div>
+      <div class="hmw reveal" data-n="23"><em>how might we…</em><p>permission decisions are observable in logs while debugging</p></div>
+      <div class="hmw reveal" data-n="24"><em>how might we…</em><p>the permission set is versioned, so stale tokens cannot grant dead permissions</p></div>
+      <div class="hmw reveal" data-n="25"><em>how might we…</em><p>the 403 experience makes deep links feel helpful, not broken</p></div>
+    </div>
+    <p class="hmw-note reveal">amber cards are the questions that later <b>became the architecture</b> — #03 seeds the hybrid catalog, #07 becomes the enforcement rule, #13 keeps the keys immortal.</p>
+  </div>
+</section>
+
+<!-- ================= ACT II : MORPHOLOGICAL ================= -->
+<section class="act act--morph" id="act2">
+  <div class="wrap">
+    <header class="act-head reveal">
+      <div>
+        <p class="act-no">act ii · second technique</p>
+        <h2>Morphological analysis</h2>
+        <p class="act-sub">Stop solving; start dialing. The problem came apart into thirteen independent dials — model, granularity, storage, delivery, guards, UI, seeding, audit, propagation — and every dial could be spun separately.</p>
+      </div>
+      <span class="act-count">13 dials · 18 combos</span>
+    </header>
+
+    <div class="lattice reveal">
+      <div class="prow"><div class="pid">P1<b>model</b></div><div class="opts"><span class="opt">role-only, coarse</span><span class="opt win">role → permission map</span><span class="opt">user-only grants</span><span class="opt">roles + user overrides</span><span class="opt">ABAC attributes</span><span class="opt">ReBAC relations</span></div></div>
+      <div class="prow"><div class="pid">P2<b>granularity</b></div><div class="opts"><span class="opt">per-page</span><span class="opt win">page × action</span><span class="opt">page × action × field</span><span class="opt">page × action × row-scope</span><span class="opt win">wildcard</span></div></div>
+      <div class="prow"><div class="pid">P3<b>catalog source</b></div><div class="opts"><span class="opt">DB-only</span><span class="opt">code-only registry</span><span class="opt win">hybrid — code catalog + DB grants</span><span class="opt">config file</span></div></div>
+      <div class="prow"><div class="pid">P4<b>storage</b></div><div class="opts"><span class="opt">join-table rows</span><span class="opt win">JSONB array on roles</span><span class="opt">bitmask int</span><span class="opt">per-action rows</span></div></div>
+      <div class="prow"><div class="pid">P5<b>delivery to client</b></div><div class="opts"><span class="opt">JWT claims</span><span class="opt win">me-endpoint payload</span><span class="opt">dedicated permissions endpoint</span><span class="opt">RSC layout props</span></div></div>
+      <div class="prow"><div class="pid">P6<b>page guard</b></div><div class="opts"><span class="opt">proxy redirect</span><span class="opt win">RSC layout guard</span><span class="opt">per-page check</span><span class="opt">client-only hide</span><span class="opt">layered combination</span></div></div>
+      <div class="prow"><div class="pid">P7<b>API guard</b></div><div class="opts"><span class="opt">manual per-route check</span><span class="opt win">requirePermission() helper</span><span class="opt">wrapper guard map</span><span class="opt">decorator</span></div></div>
+      <div class="prow"><div class="pid">P8<b>matrix UI</b></div><div class="opts"><span class="opt">roles × permissions grid</span><span class="opt">per-role editor</span><span class="opt">per-permission view</span><span class="opt win">grouped-by-page grid</span><span class="opt">preset templates</span></div></div>
+      <div class="prow"><div class="pid">P9<b>role page UX</b></div><div class="opts"><span class="opt win">table + drawer</span><span class="opt">inline edit</span><span class="opt">wizard</span><span class="opt win">duplicate-from-existing</span></div></div>
+      <div class="prow"><div class="pid">P10<b>menu visibility</b></div><div class="opts"><span class="opt win">computed from view permission</span><span class="opt">separate menu permission</span><span class="opt">nav registry flag</span></div></div>
+      <div class="prow"><div class="pid">P11<b>seeding</b></div><div class="opts"><span class="opt">hardcoded seed</span><span class="opt win">migration-time seed — ensureSchema v3</span><span class="opt">first-run wizard</span></div></div>
+      <div class="prow"><div class="pid">P12<b>audit</b></div><div class="opts"><span class="opt">none</span><span class="opt win">audit table</span><span class="opt">full event log</span></div></div>
+      <div class="prow"><div class="pid">P13<b>propagation</b></div><div class="opts"><span class="opt win">wait out token TTL</span><span class="opt">permission-version claim</span><span class="opt">live DB lookup every request</span></div></div>
+      <p class="lattice-cap">✓ marks where each dial landed after convergence — carried by the decisions, not chosen by taste.</p>
+    </div>
+
+    <div class="combos">
+      <div class="combo crown reveal">
+        <span class="tag">combo · the hinge</span>
+        <h4>The hybrid catalog</h4>
+        <p>Code defines the permission catalog from <code>navigation.ts</code> ids; the DB stores only per-role grants. A new page needs <b>no migration</b> — one idea that quietly solved three different questions from four different rooms.</p>
+      </div>
+      <div class="combo reveal">
+        <span class="tag">combo</span>
+        <h4>JSONB on the role row</h4>
+        <p>No join table. One row per role, a <code>permissions</code> JSONB column, trivially read into the <code>me</code> payload and the token.</p>
+      </div>
+      <div class="combo reveal">
+        <span class="tag">combo</span>
+        <h4><code>resource.action</code> keys</h4>
+        <p>Resource = nav page id, so <code>users.view</code> and <code>ask-ai.view</code> drive menu, route, and API guard — <b>one key, three doors</b>.</p>
+      </div>
+      <div class="combo reveal">
+        <span class="tag">combo</span>
+        <h4>Verbs per page, not CRUD everywhere</h4>
+        <p><code>users: view/create/update/delete</code>, <code>ask-ai: view/use</code>, <code>watching: view</code>. CRUD is not forced where it makes no sense.</p>
+      </div>
+      <div class="combo reveal">
+        <span class="tag">combo</span>
+        <h4>Proxy stays auth-only</h4>
+        <p>RSC page-level guard plus a strict API re-check; the edge proxy keeps <code>jose</code> and never imports <code>pg</code> — respecting the architecture already there.</p>
+      </div>
+      <div class="combo reveal">
+        <span class="tag">combo</span>
+        <h4>Everything rides <code>/api/auth/me</code></h4>
+        <p>The me payload grows a <code>permissions</code> array; a client <code>PermissionProvider</code> + <code>usePermission()</code> hook gates buttons and filters the sidebar. Zero new endpoints.</p>
+      </div>
+    </div>
+
+    <div class="combo-more reveal">
+      <h4>…and twelve more combinations from the lattice</h4>
+      <ul>
+        <li><code>requirePermission()</code> — a one-line guard at the top of each API handler</li>
+        <li>grouped matrix: rows grouped by page, expandable to verbs, roles as columns</li>
+        <li>preset templates (Viewer / Operator / Manager) on role create</li>
+        <li>wildcard <code>users.*</code> or <code>*</code> for the admin superrole</li>
+        <li class="parked"><code>perm_version</code> claim; role edit bumps the version — <em>v2, not a v1 need</em></li>
+        <li class="parked">row-scope as a future suffix: <code>users.view.own</code></li>
+        <li>duplicate-role button — cheap replacement for role inheritance</li>
+        <li>a central <code>PERMISSIONS</code> guard map per route: one map entry per new API route</li>
+        <li>seed 3 system roles on <code>ensureSchema</code> v3 — secure by default</li>
+        <li>a 403 page with ask-admin-for-access copy and a link home</li>
+        <li>roles keyed by immutable <code>TEXT</code> key — <code>users.role</code> becomes an FK with zero data migration</li>
+        <li>matrix saves via <code>PATCH /api/roles/[key]/permissions</code> with a full-set replace — no diff protocol</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ACT III : ASSUMPTION REVERSAL ================= -->
+<section class="act act--rev" id="act3">
+  <div class="wrap">
+    <header class="act-head reveal">
+      <div>
+        <p class="act-no">act iii · third technique</p>
+        <h2>Assumption reversal</h2>
+        <p class="act-sub">Take every belief so obvious nobody wrote it down, and run it backwards. Hover a card to reverse it too. Some reversals survived, some bounced straight back, and two became the feature's guardrails.</p>
+      </div>
+      <span class="act-count">18 reversals</span>
+    </header>
+
+    <div class="revgrid">
+      <div class="rev reveal"><div class="was">permissions must live in the database</div><span class="arrow">↳ reversed:</span><p class="now">pure-code role presets would mean admins cannot customize anything — <b>customization is the real requirement</b>. DB grants stay, but seeded from code defaults.</p><span class="verdict v-mix">hybrid kept</span></div>
+      <div class="rev reveal"><div class="was">the matrix page is required</div><span class="arrow">↳ reversed:</span><p class="now">preset-only role creation would cover casual admins. The matrix is power tooling — <b>ship the role master first</b>, the matrix as its own page right after.</p><span class="verdict v-mix">sequenced</span></div>
+      <div class="rev reveal"><div class="was">page permission is separate from data permission</div><span class="arrow">↳ reversed:</span><p class="now">merge them: one <code>users.view</code> key drives the menu, the route, and the GET list. <b>Fewer keys, fewer mistakes.</b></p><span class="verdict v-keep">merged into one key</span></div>
+      <div class="rev reveal"><div class="was">menu visibility equals access</div><span class="arrow">↳ reversed:</span><p class="now">hidden-but-reachable pages (shared deep links) could be a flag someday — but v1 keeps it blunt: <b>no view permission = hidden AND blocked.</b></p><span class="verdict v-keep">kept simple</span></div>
+      <div class="rev reveal"><div class="was">roles are global</div><span class="arrow">↳ reversed:</span><p class="now">per-team roles explode the combinatorics. Defer; <b>global roles + a row-scope suffix later</b> covers the real need.</p><span class="verdict v-defer">deferred</span></div>
+      <div class="rev reveal"><div class="was">there are no roles at all</div><span class="arrow">↳ reversed:</span><p class="now">direct user-to-permission grants are simpler for tiny teams — but <b>roles win for manageability</b>. User-level overrides parked as v2.</p><span class="verdict v-keep">roles kept</span></div>
+      <div class="rev reveal"><div class="was">the matrix shows everything at once</div><span class="arrow">↳ reversed:</span><p class="now">a flat wall loses at 50 roles. <b>Collapsed groups by page</b> beat it — grouped rows with expand, sticky role columns.</p><span class="verdict v-keep">grouped</span></div>
+      <div class="rev reveal"><div class="was">permission changes must be instant</div><span class="arrow">↳ reversed:</span><p class="now">accept the 15-minute access-token TTL as the propagation delay; <b>a me re-fetch on window focus</b> makes it feel near-instant. Document the behavior.</p><span class="verdict v-mix">delay accepted</span></div>
+      <div class="rev reveal"><div class="was">deleting a role migrates its users silently</div><span class="arrow">↳ reversed:</span><p class="now">block the delete while users are attached — <b>show the attached count</b> and require a reassign flow instead.</p><span class="verdict v-guard">guardrail</span></div>
+      <div class="rev reveal"><div class="was">actions are CRUD only</div><span class="arrow">↳ reversed:</span><p class="now">arbitrary verbs — export, approve, impersonate — fit the same <code>resource.verb</code> catalog format. <b>Future-proof without a schema change.</b></p><span class="verdict v-keep">verbs generalized</span></div>
+      <div class="rev reveal"><div class="was">the role page and permission page are fully separate</div><span class="arrow">↳ reversed:</span><p class="now">cross-link state via URL: the matrix highlights a role column; the role drawer <b>deep-links into the matrix</b>.</p><span class="verdict v-mix">cross-linked</span></div>
+      <div class="rev reveal"><div class="was">admin UI must be client-side</div><span class="arrow">↳ reversed:</span><p class="now">an RSC role list for fast first paint, with a <b>client island only for the editable matrix</b>.</p><span class="verdict v-mix">hybrid render</span></div>
+      <div class="rev reveal"><div class="was">audit is optional</div><span class="arrow">↳ reversed:</span><p class="now">a tiny audit table from day one is cheap insurance — <b>role_audit with a JSONB diff</b> per change.</p><span class="verdict v-keep">audit kept</span></div>
+      <div class="rev reveal"><div class="was">the sidebar needs its own endpoint</div><span class="arrow">↳ reversed:</span><p class="now">derive the sidebar client-side from the existing <code>/api/auth/me</code> payload. <b>Zero new endpoints.</b></p><span class="verdict v-keep">reused me</span></div>
+      <div class="rev reveal"><div class="was">authorization is binary</div><span class="arrow">↳ reversed:</span><p class="now">partial data — hidden columns, row scoping. Field-level deferred to v2, <b>but the keys are designed to allow suffixes</b>.</p><span class="verdict v-defer">deferred, keys ready</span></div>
+      <div class="rev reveal"><div class="was">your own role is editable</div><span class="arrow">↳ reversed:</span><p class="now">prevent editing your own role's permissions — <b>kills self-lockout and self-escalation in one rule</b>.</p><span class="verdict v-guard">guardrail</span></div>
+      <div class="rev reveal"><div class="was">permission keys are the UI</div><span class="arrow">↳ reversed:</span><p class="now">keys are code identifiers; labels come from a label map keyed by permission id. <b>i18n-ready without key churn.</b></p><span class="verdict v-keep">label map</span></div>
+      <div class="rev reveal"><div class="was">every API is guarded manually</div><span class="arrow">↳ reversed:</span><p class="now">one <code>requirePermission()</code> helper plus a per-route permission constant table — <b>enforcement becomes declarative</b>.</p><span class="verdict v-keep">declarative</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ACT IV : KILL THE CROWN JEWEL ================= -->
+<section class="act act--kill" id="act4">
+  <div class="wrap">
+    <header class="act-head reveal">
+      <div>
+        <p class="act-no">act iv · fourth technique</p>
+        <h2>Kill the crown jewel</h2>
+        <p class="act-sub">Point the blade at the thing everyone assumes the feature is — the permission checkmark matrix page itself — and swing. What survives the attempt has earned its place; what dies was decoration.</p>
+      </div>
+      <span class="act-count">12 attempts</span>
+    </header>
+
+    <div class="jewel-stage reveal">
+      <div class="jewel-art" aria-hidden="true">
+        <svg viewBox="0 0 220 220" fill="none">
+          <circle cx="110" cy="110" r="104" stroke="rgba(240,106,93,.22)" stroke-width="1"></circle>
+          <circle cx="110" cy="110" r="78" stroke="rgba(240,106,93,.3)" stroke-width="1"></circle>
+          <circle cx="110" cy="110" r="52" stroke="rgba(240,106,93,.4)" stroke-width="1"></circle>
+          <line x1="110" y1="0" x2="110" y2="46" stroke="#f06a5d" stroke-width="1.2"></line>
+          <line x1="110" y1="174" x2="110" y2="220" stroke="#f06a5d" stroke-width="1.2"></line>
+          <line x1="0" y1="110" x2="46" y2="110" stroke="#f06a5d" stroke-width="1.2"></line>
+          <line x1="174" y1="110" x2="220" y2="110" stroke="#f06a5d" stroke-width="1.2"></line>
+          <g>
+            <rect x="66" y="66" width="88" height="88" rx="10" fill="rgba(17,21,30,.9)" stroke="rgba(242,176,61,.5)" stroke-width="1.2"/>
+            <path d="M76 88l6 6 10-12" stroke="#5fd39a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" transform="translate(-8,2)"/>
+            <path d="M104 84l6 6 10-12" stroke="#5fd39a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" transform="translate(0,8)"/>
+            <path d="M132 84l6 6 10-12" stroke="#f2b03d" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" transform="translate(-8,14)"/>
+            <path d="M76 122l6 6 10-12" stroke="#5fd39a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" transform="translate(-8,4)"/>
+            <path d="M104 118l6 6 10-12" stroke="#5fd39a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" transform="translate(0,10)"/>
+            <path d="M132 114l6 6 10-12" stroke="#74e4dc" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" transform="translate(-8,16)"/>
+            <path d="M76 152l6 6 10-12" stroke="#5fd39a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" transform="translate(-8,6)"/>
+            <path d="M104 148l6 6 10-12" stroke="#b18cf5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" transform="translate(0,12)"/>
+            <path d="M132 144l6 6 10-12" stroke="#5fd39a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" transform="translate(-8,18)"/>
+          </g>
+          <circle cx="110" cy="110" r="104" stroke="rgba(242,176,61,.35)" stroke-width="1" stroke-dasharray="2 7"/>
+        </svg>
+      </div>
+      <div class="jewel-target">
+        <p class="eyebrow">the jewel, named</p>
+        <h3>The permission checkmark <code>matrix page</code> — the very thing the brief asked for.</h3>
+        <p>Three attempts were made on its life. All three missed — but each miss defined what the matrix is actually <em>for</em>, and one attempt walked away with the sequencing lesson of the whole session.</p>
+      </div>
+    </div>
+
+    <div class="kills">
+      <div class="kill reveal">
+        <div class="k-what"><b>KILL</b> the matrix — role presets (Viewer / Operator / Manager) on create fully serve casual admins</div>
+        <span class="stamp s-surv">survives</span>
+        <p class="k-why">…but the matrix is a power-user tool, not the default path. It gets demoted, not deleted.</p>
+      </div>
+      <div class="kill reveal">
+        <div class="k-what"><b>KILL</b> the matrix — a per-role drawer with grouped toggles covers ~90% of day-to-day edits</div>
+        <span class="stamp s-surv">survives</span>
+        <p class="k-why">…true, and the drawer ships. But it does not replace the one thing the matrix alone does.</p>
+      </div>
+      <div class="kill reveal">
+        <div class="k-what"><b>KILL</b> the matrix — what does it uniquely provide, anyway?</div>
+        <span class="stamp s-surv">earns its page</span>
+        <p class="k-why">Cross-role comparison at a glance, and bulk per-permission toggling. Nothing else replicates that. The jewel keeps its page.</p>
+      </div>
+      <div class="kill lesson reveal">
+        <div class="k-what"><b>LESSON</b> — build the data model + roles API <i>as if</i> the matrix already exists</div>
+        <span class="stamp s-less">lesson</span>
+        <p class="k-why">Then the matrix UI becomes a thin view over the API — and the sequencing risk ("which page first?") disappears entirely.</p>
+      </div>
+      <div class="kill reveal">
+        <div class="k-what"><b>KILL</b> roles instead — permission packs assigned directly to users</div>
+        <span class="stamp s-rej">rejected</span>
+        <p class="k-why">The role master page is the core ask. Roles stay.</p>
+      </div>
+      <div class="kill reveal">
+        <div class="k-what"><b>KILL</b> admin-configurability — frozen, code-defined roles</div>
+        <span class="stamp s-rej">rejected</span>
+        <p class="k-why">Configurability <em>is</em> the requirement.</p>
+      </div>
+      <div class="kill reveal">
+        <div class="k-what"><b>KILL</b> the DB — config-file roles with hot reload</div>
+        <span class="stamp s-rej">rejected</span>
+        <p class="k-why">Fails on audit and multi-admin — but the pattern inspired seed-from-code defaults.</p>
+      </div>
+      <div class="kill reveal">
+        <div class="k-what"><b>KILL</b> CRUD granularity — view-only gating per page</div>
+        <span class="stamp s-rej">rejected</span>
+        <p class="k-why">Action-level control is explicitly wanted. Keep 4 default verbs + custom verb support.</p>
+      </div>
+      <div class="kill reveal">
+        <div class="k-what"><b>KILL</b> sidebar customization — menus always visible, pages 403 on entry</div>
+        <span class="stamp s-rej">rejected</span>
+        <p class="k-why">Hidden-menu is better UX than visible-then-403. Keep the derived hiding.</p>
+      </div>
+      <div class="kill reveal">
+        <div class="k-what"><b>KILL</b> audit — rely on DB backups and git</div>
+        <span class="stamp s-rej">rejected</span>
+        <p class="k-why">Audit is too cheap not to have. Keep the simple audit table.</p>
+      </div>
+      <div class="kill reveal">
+        <div class="k-what"><b>KILL</b> both pages — one combined <code>/settings/access</code> page</div>
+        <span class="stamp s-rej">rejected</span>
+        <p class="k-why">Separate pages are wanted — but cross-link them heavily.</p>
+      </div>
+      <div class="kill reveal">
+        <div class="k-what"><b>KILL</b> instant propagation — accept the token TTL as the propagation delay</div>
+        <span class="stamp s-acc">accepted</span>
+        <p class="k-why">For v1: 15 minutes max, documented behavior. The one kill that landed.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= GROUND TRUTH ================= -->
+<section class="ground" id="ground">
+  <div class="wrap">
+    <header class="act-head reveal">
+      <div>
+        <p class="act-no" style="color:var(--amber)">interlude · before converging</p>
+        <h2>Ground truth</h2>
+        <p class="act-sub">The coach stopped ideating and re-read the codebase. Five facts pinned the design down — and two loose threads were flagged instead of silently decided.</p>
+      </div>
+      <span class="act-count">5 facts · 2 threads</span>
+    </header>
+
+    <div class="gt-grid">
+      <div class="gt reveal"><h4>navigation.ts</h4><p>Exports <code>WORKSPACE_PAGES</code> (home, ask-ai, agent-board) + <code>ADMIN_PAGES</code> (users). Watching is a special <code>WorkspaceRoute</code>; <code>ALL_PAGES</code> is the sidebar source.</p></div>
+      <div class="gt reveal"><h4>proxy.ts</h4><p>Auth-only and edge-safe (<code>jose</code>, no <code>pg</code>) with hardcoded <code>PROTECTED_PREFIXES</code>. Data authorization intentionally lives in the API layer.</p></div>
+      <div class="gt reveal"><h4>the token</h4><p>The access JWT already carries a role claim, 15-minute TTL, silent refresh rotation. <code>getSessionUser</code> re-verifies strictly; <code>/api/auth/me</code> already exists.</p></div>
+      <div class="gt reveal"><h4>db.ts</h4><p><code>ensureSchema()</code> — an idempotent bootstrap at schema v2, UUID PKs, pg pool. Roles are hardcoded in <code>api/users/route.ts</code>; <code>users.role</code> is TEXT, default <code>Member</code>.</p></div>
+      <div class="gt reveal"><h4>so the quiet breakthrough works</h4><p>Roles keyed by an immutable <code>TEXT</code> key means <code>users.role</code> becomes an FK <em>untouched</em> — zero data migration, and role renames stay free forever.</p></div>
+      <div class="gt q reveal"><h4>open threads, kept open</h4><p>Watching is not in <code>ALL_PAGES</code> — the catalog must include it explicitly so it can be gated. And Ask AI needs a <code>use</code> verb beyond <code>view</code>; the exact verb set per page is to be confirmed with the user.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CONVERGENCE ================= -->
+<section class="conv" id="converge">
+  <div class="wrap">
+    <header class="act-head reveal">
+      <div>
+        <p class="act-no" style="color:var(--green)">convergence · affinity clustering</p>
+        <h2>Six piles on the table</h2>
+        <p class="act-sub">Divergence closed at 106 logged ideas — 25 questions, 13 dials, 18 combos, 18 reversals, 12 kill attempts, 20 grounded decisions. Affinity clustering pulled them into six piles; five of them became the feature, one became a parking lot.</p>
+      </div>
+      <span class="act-count">6 clusters</span>
+    </header>
+
+    <div class="funnel reveal" aria-label="convergence funnel">
+      <div class="fstep"><b>106</b><span>ideas</span></div><span class="farrow">→</span>
+      <div class="fstep"><b>6</b><span>clusters</span></div><span class="farrow">→</span>
+      <div class="fstep"><b>12</b><span>musts</span></div><span class="farrow">→</span>
+      <div class="fstep"><b>1</b><span>sentence</span></div>
+    </div>
+
+    <div class="clusters">
+      <div class="cluster reveal"><span class="cl-id">cluster a</span><h4>Single source of truth</h4><p>The permission catalog lives in code — <code>navigation</code> ids × verbs — with <code>resource.action</code> keys. The DB stores grants, nothing else.</p></div>
+      <div class="cluster reveal"><span class="cl-id">cluster b</span><h4>Enforcement layering</h4><p>Proxy stays auth-only. The API's <code>requirePermission()</code> is the real gate. The client hides buttons. The 403 view catches deep links. Audit records it all.</p></div>
+      <div class="cluster reveal"><span class="cl-id">cluster c</span><h4>Data model</h4><p>Roles keyed by immutable <code>TEXT</code> key — <code>users.role</code> becomes an FK with zero migration. Permissions as JSONB. Three system roles seeded via <code>ensureSchema</code> v3.</p></div>
+      <div class="cluster reveal"><span class="cl-id">cluster d</span><h4>Admin UX</h4><p>A role master page (CRUD + duplicate) and a permission matrix page (grouped grid, roles as columns) — separate, but heavily cross-linked.</p></div>
+      <div class="cluster reveal"><span class="cl-id">cluster e</span><h4>Safety rails</h4><p>No editing your own role. No deleting a role with users attached. No stripping <code>roles.manage</code> from the last role holding it. Audit on every mutation.</p></div>
+      <div class="cluster parked reveal"><span class="cl-id">cluster f</span><h4>Parked — v2 and beyond</h4><p>Row-scope, field-level rules, user overrides, per-team roles, <code>perm_version</code>, custom verb UI, impersonation, Casbin/CASL.</p></div>
+    </div>
+
+    <!-- ===== gate demo ===== -->
+    <div class="gatedemo reveal" id="gateDemo">
+      <div class="gd-head">
+        <h3>Send a request through the gates</h3>
+        <p>three layers, each checking less and mattering more</p>
+      </div>
+      <div class="gd-controls">
+        <fieldset>
+          <legend>as role</legend>
+          <div class="seg">
+            <label><input type="radio" name="gdRole" value="admin"><span>admin</span></label>
+            <label><input type="radio" name="gdRole" value="editor" checked><span>editor</span></label>
+            <label><input type="radio" name="gdRole" value="member"><span>member</span></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>attempting</legend>
+          <div class="seg">
+            <label><input type="radio" name="gdKey" value="users.view"><span>users.view</span></label>
+            <label><input type="radio" name="gdKey" value="users.delete" checked><span>users.delete</span></label>
+            <label><input type="radio" name="gdKey" value="roles.manage"><span>roles.manage</span></label>
+            <label><input type="radio" name="gdKey" value="ask-ai.use"><span>ask-ai.use</span></label>
+          </div>
+        </fieldset>
+        <button class="runbtn" type="button" id="runGate">send request →</button>
+      </div>
+
+      <div class="gd-track">
+        <div class="gate" id="gate1">
+          <div class="g-name">proxy.ts</div>
+          <div class="g-role">gate 1 · edge</div>
+          <p>Auth-only: verifies the session cookie, redirects anonymous visitors. Never imports <code>pg</code>, so it never even knows what a permission is.</p>
+          <span class="g-state" id="gs1">waiting</span>
+        </div>
+        <div class="gd-arrow" id="ar1">→</div>
+        <div class="gate" id="gate2">
+          <div class="g-name">RSC page guard</div>
+          <div class="g-role">gate 2 · the page</div>
+          <p>Checks the resource's <code>.view</code> key before render. On failure, the 403 view — with a way home and a nudge to ask an admin.</p>
+          <span class="g-state" id="gs2">waiting</span>
+        </div>
+        <div class="gd-arrow" id="ar2">→</div>
+        <div class="gate last" id="gate3">
+          <div class="g-name">requirePermission()</div>
+          <div class="g-role">gate 3 · the API · truth</div>
+          <p>One line at the top of the handler, checked against the role's grants. The only layer allowed to say yes.</p>
+          <span class="g-state" id="gs3">waiting</span>
+        </div>
+      </div>
+
+      <div class="gd-verdict" id="gdVerdict">
+        <span class="code" id="gdCode">— —</span>
+        <p id="gdText">Pick a role and an ambition, then send it. Or untick a box in the matrix above first — this gate reads the same grants.</p>
+      </div>
+      <p class="gd-foot">client-side hiding is <b>cosmetics</b> — buttons vanish, menus shrink, but only gate 3 can say yes.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= MoSCoW ================= -->
+<section class="moscow" id="moscow">
+  <div class="wrap">
+    <header class="act-head reveal">
+      <div>
+        <p class="act-no" style="color:var(--green)">convergence · moscow</p>
+        <h2>What ships</h2>
+        <p class="act-sub">The clusters, forced to choose a lane. Twelve musts — everything else waits its turn politely.</p>
+      </div>
+      <span class="act-count">must / should / could / won't</span>
+    </header>
+
+    <div class="tiers">
+      <div class="tier must reveal">
+        <div class="tier-head"><span class="t-name">must</span><span class="t-sub">v1 · the build-ready core</span></div>
+        <ul>
+          <li><code>permissions.ts</code> catalog — including watching + <code>roles.*</code> resources</li>
+          <li>schema v3: <code>roles</code> + <code>role_audit</code> + FK + seed</li>
+          <li><code>me</code> payload extended with <code>permissions</code></li>
+          <li><code>requirePermission()</code> on all APIs</li>
+          <li>roles API: GET / POST / PATCH / DELETE / permissions</li>
+          <li><code>/roles</code> master page</li>
+          <li><code>/permissions</code> matrix page</li>
+          <li>sidebar filtering + <code>usePermission()</code></li>
+          <li>page-level 403 handling</li>
+          <li>lockout guards (own role, attached users, last holder)</li>
+          <li>audit writes on every mutation</li>
+          <li>delete the hardcoded <code>ROLES</code> array</li>
+        </ul>
+      </div>
+      <div class="tier should reveal">
+        <div class="tier-head"><span class="t-name">should</span><span class="t-sub">cheap, and it shows</span></div>
+        <ul>
+          <li>a dedicated 403 view, reusing the not-found-view pattern</li>
+          <li>matrix collapses to a per-role editor on small screens</li>
+          <li>duplicate-role button</li>
+          <li><code>me</code> re-fetch on window focus</li>
+        </ul>
+      </div>
+      <div class="tier could reveal">
+        <div class="tier-head"><span class="t-name">could</span><span class="t-sub">if the room is there</span></div>
+        <ul>
+          <li>preset templates on role create</li>
+          <li>audit log viewer UI</li>
+          <li>"why is this disabled?" tooltips</li>
+        </ul>
+      </div>
+      <div class="tier wont reveal">
+        <div class="tier-head"><span class="t-name">won't — parked</span><span class="t-sub">cluster f, deliberately locked out</span></div>
+        <ul>
+          <li><code>perm_version</code> instant propagation</li>
+          <li>row / field-level scoping</li>
+          <li>user-level permission overrides</li>
+          <li>per-team roles</li>
+          <li>role inheritance</li>
+          <li>custom-verbs UI</li>
+          <li>external libs (Casbin / CASL)</li>
+          <li>impersonation</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FINALE ================= -->
+<section class="finale" id="finale">
+  <div class="wrap">
+    <div class="keys-scatter" id="keysScatter" aria-hidden="true">
+      <code>users.view</code><code>roles.manage</code><code>ask-ai.use</code><code>watching.view</code><code>agent-board.view</code><code class="star">*</code>
+    </div>
+    <p class="eyebrow">the synthesis · one sentence, whole architecture</p>
+    <p class="sent" id="sent">
+      <span class="w">One</span> <span class="w"><span class="k">resource.action</span></span> <span class="w">key,</span>
+      <span class="w">from</span> <span class="w">one</span> <span class="w">code</span> <span class="w">catalog,</span>
+      <span class="w">drives</span> <span class="w">the</span> <span class="w">sidebar</span> <span class="w">filter,</span>
+      <span class="w">the</span> <span class="w">page</span> <span class="w">403,</span>
+      <span class="w">and</span> <span class="w">the</span> <span class="w">API</span> <span class="w">guard —</span>
+      <span class="w">while</span> <span class="w">the</span> <span class="w">DB</span> <span class="w">stores</span> <span class="w">only</span>
+      <span class="w"><span class="yes">who-has-what,</span></span>
+      <span class="w">and</span> <span class="w">only</span> <span class="w">the</span> <span class="w">API</span>
+      <span class="w">is</span> <span class="w">allowed</span> <span class="w">to</span> <span class="w">say</span>
+      <span class="w"><span class="yes">yes.</span></span>
+    </p>
+
+    <div class="finale-hats">
+      <div class="hat reveal"><span class="h-n">hat one · from act i</span><p><b>No migration for new pages</b> — the catalog is generated in code from navigation ids × per-page verbs, so a new page is one catalog entry, not a schema change.</p></div>
+      <div class="hat reveal"><span class="h-n">hat two · from act iv</span><p><b>The matrix as a thin view</b> — the data model and roles API are built as if the matrix exists, so its UI is just a lens over grants. Sequencing risk: gone.</p></div>
+      <div class="hat reveal"><span class="h-n">hat three · from act iii</span><p><b>Labels are not keys</b> — keys are code identifiers, forever stable; labels arrive via a label map, i18n-ready without a single key changing.</p></div>
+    </div>
+
+    <p class="finale-through reveal">And two problems dissolved without building anything: <b>propagation</b> — the tokens already expire in fifteen minutes and the client already silently refreshes, so permission changes simply ride the existing mechanism; and the <b>through-line</b> that held all 106 ideas together — <b>UI hiding is cosmetics, the API is the truth, and safety rails are part of the feature, not an afterthought.</b></p>
+  </div>
+</section>
+
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <span>brainstorm-rbac-roles-permissions</span><span class="dotsep">initiative auth-system</span><span class="dotsep">riset coba · next.js</span>
+    <span class="right status">status: complete · build-ready · 2026-11-03 12:55</span>
+  </div>
+  <div class="wrap" style="margin-top:14px">
+    <span style="text-transform:none;letter-spacing:.04em">drawn entirely from the session memlog — 106 ideas, nothing invented</span>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  "use strict";
+  var doc = document.documentElement;
+  doc.classList.remove("no-js");
+  doc.classList.add("js");
+
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function qsa(s,c){ return Array.prototype.slice.call((c||document).querySelectorAll(s)); }
+  function qs(s,c){ return (c||document).querySelector(s); }
+
+  /* ---------- scroll progress ---------- */
+  var bar = qs("#progressBar");
+  function onScroll(){
+    if(!bar) return;
+    var h = doc.scrollHeight - window.innerHeight;
+    var p = h > 0 ? Math.min(1, window.scrollY / h) : 0;
+    bar.style.width = (p*100).toFixed(2) + "%";
+  }
+  var ticking = false;
+  window.addEventListener("scroll", function(){
+    if(!ticking){ window.requestAnimationFrame(function(){ onScroll(); ticking = false; }); ticking = true; }
+  }, {passive:true});
+  onScroll();
+
+  /* ---------- reveal on scroll ---------- */
+  var reveals = qsa(".reveal");
+  if("IntersectionObserver" in window && !reduceMotion){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if(e.isIntersecting){ e.target.classList.add("in"); io.unobserve(e.target); }
+      });
+    }, {threshold:.1, rootMargin:"0px 0px -6% 0px"});
+    reveals.forEach(function(el,i){ el.style.transitionDelay = ((i % 4) * 60) + "ms"; io.observe(el); });
+  } else {
+    reveals.forEach(function(el){ el.classList.add("in"); });
+  }
+
+  /* ---------- finale: keys settle + word stagger ---------- */
+  var scatter = qs("#keysScatter"), sent = qs("#sent");
+  if(scatter && sent){
+    var words = qsa(".w", sent);
+    words.forEach(function(w,i){ w.style.transitionDelay = (200 + i*55) + "ms"; });
+    if("IntersectionObserver" in window && !reduceMotion){
+      var fio = new IntersectionObserver(function(entries){
+        entries.forEach(function(e){
+          if(e.isIntersecting){
+            scatter.classList.add("in");
+            setTimeout(function(){ sent.classList.add("in"); }, 500);
+            fio.unobserve(e.target);
+          }
+        });
+      }, {threshold:.4});
+      fio.observe(sent);
+    } else {
+      scatter.classList.add("in"); sent.classList.add("in");
+    }
+  }
+
+  /* ---------- toast ---------- */
+  var toastEl = qs("#toast"), toastTimer = null;
+  function toast(html){
+    if(!toastEl) return;
+    toastEl.innerHTML = html;
+    toastEl.classList.add("show");
+    if(toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove("show"); }, 3600);
+  }
+
+  /* ---------- the permission matrix ---------- */
+  var matrix = qs("#matrix");
+  if(matrix){
+    var boxes = qsa("input[type=checkbox]", matrix);
+    var navItems = qsa(".nav-item");
+    var keyChips = qs("#keyChips");
+    var appHidden = qs("#appHidden");
+    var appEmpty = qs("#appEmpty");
+    var colHeads = qsa(".mcol");
+    var pvTabs = qsa(".pv-tab");
+    var activeRole = "member";
+
+    function grantedFor(role){
+      if(role === "admin") return ["*"];
+      return boxes.filter(function(b){ return b.dataset.role === role && b.checked; })
+                  .map(function(b){ return b.dataset.key; });
+    }
+    function allKeys(){
+      var seen = [];
+      boxes.forEach(function(b){ if(seen.indexOf(b.dataset.key) < 0) seen.push(b.dataset.key); });
+      return seen;
+    }
+
+    function render(){
+      /* column counts */
+      colHeads.forEach(function(h){
+        var r = h.dataset.role;
+        var n = r === "admin" ? "∗" : String(grantedFor(r).length) + " keys";
+        h.setAttribute("data-count", n);
+      });
+
+      /* sidebar preview */
+      var granted = grantedFor(activeRole);
+      var hidden = [];
+      navItems.forEach(function(n){
+        var on = granted.indexOf(n.dataset.key) >= 0;
+        n.classList.toggle("on", on);
+        n.classList.toggle("off", !on);
+        if(!on) hidden.push(n.dataset.nav);
+      });
+      if(appHidden){
+        appHidden.innerHTML = hidden.length
+          ? "hidden by permission: <b>" + hidden.join(", ") + "</b>"
+          : "nothing hidden — this role sees the whole menu";
+      }
+      if(appEmpty){ appEmpty.classList.toggle("show", hidden.length === navItems.length); }
+
+      /* me payload chips */
+      if(keyChips){
+        keyChips.innerHTML = granted.length
+          ? granted.map(function(k){
+              return '<code class="' + (k === "*" ? "star" : "") + '">' + k + "</code>";
+            }).join("")
+          : "<code>[]</code>";
+      }
+    }
+
+    matrix.addEventListener("change", function(e){
+      var t = e.target;
+      if(t && t.type === "checkbox"){
+        render();
+        if(t.dataset.role === "editor" && t.dataset.key === "roles.manage" && t.checked){
+          toast("<b>roles.manage</b> granted to editor — a second keyholder. The last-holder guard now has company.");
+        }
+      }
+    });
+
+    /* locked cells: the wildcard column fights back */
+    matrix.addEventListener("click", function(e){
+      var locked = e.target.closest ? e.target.closest(".cell.locked") : null;
+      if(locked){
+        toast("<b>admin</b> is a system role holding the wildcard <b>*</b> — is_system roles are immutable. (Guardrails: you also cannot edit your own role, or delete one with users attached.)");
+      }
+    });
+
+    /* column hover + active */
+    function setCol(role, on, cls){
+      qsa(".cell[data-role='" + role + "']", matrix).forEach(function(c){ c.classList.toggle(cls, on); });
+    }
+    colHeads.forEach(function(h){
+      var r = h.dataset.role;
+      h.addEventListener("mouseenter", function(){ setCol(r, true, "col-on"); });
+      h.addEventListener("mouseleave", function(){ setCol(r, false, "col-on"); });
+    });
+    function markActive(){
+      colHeads.forEach(function(h){ h.classList.toggle("active", h.dataset.role === activeRole); });
+      pvTabs.forEach(function(t){ t.setAttribute("aria-pressed", String(t.dataset.role === activeRole)); });
+    }
+    pvTabs.forEach(function(t){
+      t.addEventListener("click", function(){
+        activeRole = t.dataset.role;
+        markActive();
+        render();
+      });
+    });
+
+    markActive();
+    render();
+  }
+
+  /* ---------- the gates ---------- */
+  var runBtn = qs("#runGate");
+  if(runBtn){
+    var gates = [qs("#gate1"), qs("#gate2"), qs("#gate3")];
+    var states = [qs("#gs1"), qs("#gs2"), qs("#gs3")];
+    var arrows = [qs("#ar1"), qs("#ar2")];
+    var vBox = qs("#gdVerdict"), vCode = qs("#gdCode"), vText = qs("#gdText");
+    var matrixRef = qs("#matrix");
+    var allBoxList = matrixRef ? qsa("input[type=checkbox]", matrixRef) : [];
+
+    function roleHas(role, key){
+      if(role === "admin") return true;
+      return allBoxList.some(function(b){ return b.dataset.role === role && b.dataset.key === key && b.checked; });
+    }
+    function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+
+    function resetGates(){
+      gates.forEach(function(g){ g.classList.remove("active","pass","deny"); });
+      states.forEach(function(s){ s.textContent = "waiting"; });
+      arrows.forEach(function(a){ a.classList.remove("lit"); });
+      vBox.classList.remove("ok","no");
+    }
+    function setState(i, ok, label){
+      gates[i].classList.remove("active");
+      gates[i].classList.add(ok ? "pass" : "deny");
+      states[i].textContent = label;
+    }
+
+    runBtn.addEventListener("click", function(){
+      var roleEl = qs("input[name=gdRole]:checked");
+      var keyEl = qs("input[name=gdKey]:checked");
+      var role = roleEl ? roleEl.value : "editor";
+      var key = keyEl ? keyEl.value : "users.view";
+      var pageKey = key.split(".")[0] + ".view";
+      var step = reduceMotion ? 0 : 620;
+
+      resetGates();
+      runBtn.disabled = true;
+      vCode.textContent = "· · ·";
+      vText.textContent = "a request from " + role + " asking for " + key + " is walking the layers…";
+
+      var chain = Promise.resolve();
+      chain = chain.then(function(){ gates[0].classList.add("active"); return sleep(step); })
+        .then(function(){ setState(0, true, "auth ok"); arrows[0].classList.add("lit"); return sleep(step); })
+        .then(function(){
+          var ok2 = roleHas(role, pageKey);
+          gates[1].classList.add("active");
+          return sleep(step).then(function(){
+            setState(1, ok2, ok2 ? "render" : "403 view");
+            if(ok2) arrows[1].classList.add("lit");
+            return ok2;
+          });
+        })
+        .then(function(pageOk){
+          if(!pageOk){
+            vBox.classList.add("no");
+            vCode.textContent = "403";
+            vText.innerHTML = "The RSC layout guard stopped the render — <b>" + role + "</b> lacks <code>" + pageKey + "</code>. The 403 view offers a way home and copy that asks an admin for access. Deep links degrade gracefully instead of breaking.";
+            runBtn.disabled = false;
+            return null;
+          }
+          gates[2].classList.add("active");
+          return sleep(step).then(function(){
+            var ok3 = roleHas(role, key);
+            setState(2, ok3, ok3 ? "200 · yes" : "403 · no");
+            if(ok3){
+              vBox.classList.add("ok");
+              vCode.textContent = "200";
+              vText.innerHTML = "<b>" + role + "</b> holds <code>" + (role === "admin" ? "*" : key) + "</code>. The API said yes — everything before it was convenience.";
+            } else {
+              vBox.classList.add("no");
+              vCode.textContent = "403";
+              vText.innerHTML = "The page rendered, but the API refused: <code>requirePermission('" + key + "')</code> returned 403 for <b>" + role + "</b>. The hidden button was never the real lock — hiding is cosmetics, this layer is the truth.";
+            }
+            runBtn.disabled = false;
+          });
+        });
+    });
+  }
+})();
+</script>
+</body>
+</html>

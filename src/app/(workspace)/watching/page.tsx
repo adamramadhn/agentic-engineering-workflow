@@ -1,8 +1,10 @@
 import Image from "next/image";
 import { WATCHED_COMPANIES } from "@/components/dashboard/navigation";
+import { PagePermissionGate } from "@/components/dashboard/page-permission-gate";
 
 export default function WatchingPage() {
   return (
+    <PagePermissionGate permission="watching.view">
       <div className="mx-auto w-full max-w-4xl py-2">
         <h1 className="text-xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">Watching</h1>
         <p className="mt-2 text-sm text-neutral-500">The companies you follow in your workspace.</p>
@@ -16,5 +18,6 @@ export default function WatchingPage() {
           ))}
         </div>
       </div>
+    </PagePermissionGate>
   );
 }

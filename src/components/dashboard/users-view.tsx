@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, ArrowRight, Calendar, CheckCircle2, Filter, Mail, Search, User, UserCheck, Users, X } from "@/components/icons";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -33,6 +33,10 @@ const columns = [
 ];
 const formatDate = (date: string) => new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
 
+/** One selectable role: `value` is the roles-table key (what the API stores on
+ *  a user), `label` is its display name. */
+type RoleOption = { value: string; label: string };
+
 export function UsersView() {
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<FilterValue>({});
@@ -43,6 +47,11 @@ export function UsersView() {
   const [openedUser, setOpenedUser] = useState<DirectoryUser | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [users, setUsers] = useState<DirectoryUser[]>([]);
+  // Roles are data: the primary source is the roles API. `null` means "unusable
+  // or not allowed" (403/error), which switches both role pickers to the
+  // directory-derived fallback below — an Editor has users.create but no
+  // roles.view, and must still see real options, never a hardcoded trio.
+  const [apiRoles, setApiRoles] = useState<RoleOption[] | null>(null);
 
   const loadUsers = useCallback(() => {
     apiFetch("/api/users")
@@ -52,6 +61,26 @@ export function UsersView() {
   }, []);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
+
+  useEffect(() => {
+    apiFetch("/api/roles")
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        setApiRoles(Array.isArray(data?.roles)
+          ? data.roles.map((role: { key: string; name: string }) => ({ value: role.key, label: role.name }))
+          : null);
+      })
+      .catch(() => { setApiRoles(null); });
+  }, []);
+
+  // Fallback: the distinct role keys present in the loaded directory. Derived,
+  // never hardcoded — it tracks whatever roles actually exist, just labeled by
+  // key instead of by name (the Editor cannot read the roles table).
+  const directoryRoles = useMemo(
+    () => Array.from(new Set(users.map(user => user.role))).sort().map(key => ({ value: key, label: key })),
+    [users]
+  );
+  const roleOptions = apiRoles ?? directoryRoles;
 
   const filtered = users.filter(user => (view === "All" || user.status === view) && (!roles.length || roles.includes(user.role)) && `${user.name} ${user.email} ${user.team} ${user.id}`.toLowerCase().includes(query.toLowerCase()));
   const pageCount = Math.max(1, Math.ceil(filtered.length / 10));
@@ -88,7 +117,7 @@ export function UsersView() {
               </PopoverTrigger>
               <PopoverContent unstyled align="end" className="users-role-popover">
                 <PopoverTitle className="sr-only">Filter users by role</PopoverTitle>
-                <FilterMenu title="Filters" groups={[{ id: "role", label: "Role", options: ["Admin", "Editor", "Member"].map(role => ({ id: role, label: role })) }]} value={filters} onChange={value => { setFilters(value); setPage(0); }} />
+                <FilterMenu title="Filters" groups={[{ id: "role", label: "Role", options: roleOptions.map(option => ({ id: option.value, label: option.label })) }]} value={filters} onChange={value => { setFilters(value); setPage(0); }} />
               </PopoverContent>
             </Popover>
             <Button size="lg" icon={<UserCheck />} onClick={() => setAddOpen(true)}>Add user</Button>
@@ -134,22 +163,24 @@ export function UsersView() {
           {openedUser && <><DialogHeader><DialogTitle>{openedUser.name}</DialogTitle><DialogDescription>{openedUser.email} · {openedUser.id}</DialogDescription></DialogHeader><dl className="grid grid-cols-2 gap-4 text-sm">{[["Role", openedUser.role], ["Team", openedUser.team], ["Status", openedUser.status], ["Joined", formatDate(openedUser.joined)]].map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1">{value}</dd></div>)}</dl></>}
         </DialogContent>
       </Dialog>
-      <AddUserDialog open={addOpen} onOpenChange={setAddOpen} onAdded={loadUsers} />
+      <AddUserDialog open={addOpen} onOpenChange={setAddOpen} onAdded={loadUsers} roleOptions={roleOptions} />
     </section>
   );
 }
 
-const ROLE_OPTIONS = ["Admin", "Editor", "Member"];
 const TEAM_OPTIONS = ["Design", "Engineering", "Marketing", "Operations", "General"];
 
 function AddUserDialog({
   open,
   onOpenChange,
   onAdded,
+  roleOptions,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAdded: () => void | Promise<void>;
+  /** The same role source the FilterMenu uses — see UsersView. */
+  roleOptions: RoleOption[];
 }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -157,6 +188,14 @@ function AddUserDialog({
   const [role, setRole] = useState("Member");
   const [team, setTeam] = useState("General");
   const [saving, setSaving] = useState(false);
+
+  // The options arrive async, so the selection is derived rather than synced:
+  // "Member" while it is a real option, else the first available one — never a
+  // value no item matches (which would POST a role the API rejects anyway).
+  const defaultRole = roleOptions.some(option => option.value === "Member")
+    ? "Member"
+    : roleOptions[0]?.value ?? "Member";
+  const selectedRole = roleOptions.some(option => option.value === role) ? role : defaultRole;
 
   function resetForm() {
     setName("");
@@ -173,7 +212,7 @@ function AddUserDialog({
       const res = await apiFetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password, role, team }),
+        body: JSON.stringify({ name, email, password, role: selectedRole, team }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -214,9 +253,9 @@ function AddUserDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <span id="add-user-role-label" className="text-xs font-medium text-muted-foreground">Role</span>
-              <Select value={role} onValueChange={value => setRole(value ?? "Member")}>
-                <SelectTrigger aria-labelledby="add-user-role-label" className="w-full"><SelectValue>{role}</SelectValue></SelectTrigger>
-                <SelectContent>{ROLE_OPTIONS.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent>
+              <Select value={selectedRole} onValueChange={value => setRole(value ?? "Member")}>
+                <SelectTrigger aria-labelledby="add-user-role-label" className="w-full"><SelectValue>{roleOptions.find(option => option.value === selectedRole)?.label ?? selectedRole}</SelectValue></SelectTrigger>
+                <SelectContent>{roleOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="grid gap-1.5">

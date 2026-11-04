@@ -1,0 +1,47 @@
+# epic-rbac-proof — stories in build order. `id` is permanent.
+# Harness first (every later story runs on it), then the two suites in
+# either order, CI last so it lands on green suites.
+
+[[entry]]
+id = 1
+type = "story"
+title = "Test harness: playwright + per-run scratch DB + one-command verify"
+description = "Add @playwright/test as a devDependency (zero new runtime deps holds) with playwright.config.ts whose webServer boots the app against a per-run scratch database (CREATE DATABASE verified feasible on the project's pg server); the dev database is never touched. The run-unique database name is derived once at playwright.config.ts evaluation scope and passed explicitly to both webServer.env and globalSetup — the spawned server must never depend on env mutated later in a separate process. The create/connect/drop lifecycle lives in a small shared harness module (scripts/ or src/test-harness/) that playwright's config drives and story 2's vitest globalSetup reuses: CREATE the scratch DB from DATABASE_URL, let the app's own ensureSchema()+role seeding bootstrap it, DROP on teardown, and reclaim the name if a killed run left it behind. Browser strategy: bundled chromium, falling back to the system chrome channel when the download is unavailable. A thin smoke spec (anonymous /login renders; anonymous deep link redirects to /login?next=) proves the whole chain. package.json gains test:e2e (playwright test) and verify — the one command this epic's Done-when names: build, then repo lint reported-but-non-gating (pre-existing template debt stays outside the gate), then vitest (the pure suite), then the e2e suite; story 2's matrix joins this same command when it lands. No application-code changes."
+verify = "From a clean checkout: npm run verify runs build, the reported (non-gating) lint pass, vitest, and playwright in one command and exits 0 despite the repo's pre-existing lint errors (vitest still 29/29, its pure suite untouched); the smoke spec passes cold; the scratch database is created, connected, and dropped across the run while the dev database's roles/users rows are byte-identical before and after; killing the run mid-suite still cleans up (or the next run reclaims the name)."
+covers = ["R9"]
+after = []
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 2
+type = "story"
+title = "Per-role API fixture matrix: roles × guarded endpoints over real HTTP"
+description = "A vitest project (own config/file pattern — files that plain `vitest run` does NOT pick up, so `npm test` keeps its current meaning) that provisions its own runtime through story 1's shared harness module via vitest globalSetup: scratch DB created + seeded, app booted and pointed at it, both torn down after — the suite never depends on playwright's runtime. It drives the running app over HTTP with per-role login cookies — never unit-invoked route handlers. Guarded means the requirePermission-guarded data routes (/api/users GET/POST, /api/roles GET/POST, /api/roles/[key] PATCH/DELETE, /api/roles/[key]/permissions PATCH); /api/auth/* session behavior is story 3's e2e territory, not this matrix. Fixtures: Admin, Editor, Member, and one custom role × every guarded endpoint → the expected success/403 matrix (success is 200 on the GETs and PATCHes, 201 on the two POSTs — `src/app/api/users/route.ts:110`, `src/app/api/roles/route.ts:146`; the endpoint inventory is enumerated and recorded in this story's plan before implementation); 401 unauthenticated on every guarded route; the guard cases design §9 pins: own-role permissions edit → 403, delete system role → 409, delete role with attached users → 409 + userCount, stripping roles.manage from its last holder → 409, POST /api/roles with an unknown permission string → 400, POST /api/users with an unknown role → 400; exactly one role_audit row (action, actor_id, diff) per successful ROLES mutation (the roles API is the only role_audit writer — a users-create asserts no audit side-effect), read over pg; FK: INSERT with a non-existent role rejected by the constraint. Fixtures create and clean their own roles/users. The suite ships wired into `npm run verify` (its own test:matrix script joins the one command, so CI runs it with everything else)."
+verify = "The matrix suite is green from cold against a fresh scratch DB it provisioned itself (no playwright involved); every route in the plan's recorded inventory appears in the 401 row set; every mutation case asserts its audit row and diff; `npm run verify` runs the matrix alongside build/vitest/e2e; flipping any single expectation (temporarily edit one expected status) fails the suite; dev database untouched."
+covers = ["R9"]
+after = [1]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 3
+type = "story"
+title = "Per-role e2e happy paths: sidebar exactness, member 403, admin grant flow"
+description = "Playwright specs on the story-1 harness covering design §9.3: sign in as each seeded role and assert the sidebar (and command palette where reachable) shows exactly that role's permitted entries — Roles/Permissions entries for Admin only; as Member, deep-link /users renders the in-app 403 view with no data and no /api/users request; the admin flow: create a role → toggle its permissions → /permissions and /roles reflect the change → revoke a grant on a second user's role → that user's next API request 403s and their UI updates after the me re-fetch (window focus). Suite-created users/roles are cleaned up by the suite."
+verify = "All e2e specs green from cold on the harness DB; the member-403 spec asserts both the rendered 403 view and the absent network call; the revocation spec observes the 403 on the very next request and the UI catch-up after focus; no fixture survives the run."
+covers = ["R9"]
+after = [1]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 4
+type = "story"
+title = "CI: suites on every change via GitHub Actions"
+description = ".github/workflows/ci.yml — on push and pull_request: checkout, Node setup with npm cache, a postgres service container, DATABASE_URL pointing at it, playwright's chromium (or the system chrome fallback), then the one command (npm run verify). Lint has no separate workflow step: it already runs inside verify as a reported, non-gating stage (pre-existing 55 template-file errors are outside this initiative — documented in the epic's Notes) and never gates. No application-code changes."
+verify = "The workflow file is valid YAML that actionlint (or an equivalent parser) accepts; the workflow's test step runs exactly `npm run verify` — the same one command as local, lint included exactly once via its non-gating stage — while provisioning (checkout, Node, postgres service, chromium) is the job's own; no separate lint step exists to fail the job; pushing to the remote is the live check and any failure there loops back through this ticket."
+covers = ["R9"]
+after = [2, 3]
+hitl = false
+risk = "low"

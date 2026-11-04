@@ -25,7 +25,7 @@ const base = process.env.APP_URL || 'http://127.0.0.1:3010';
     await page.goto(base);
     await page.getByRole('heading', { name: 'Home', exact: true }).waitFor();
     const nav = page.locator('aside nav:not([aria-label="Admin"])');
-    assert.deepEqual(await nav.getByRole('link').allTextContents(), ['Home', 'Ask AI', 'Agent Board']);
+    assert.deepEqual(await nav.getByRole('link').allTextContents(), ['Home', 'Ask AI', 'Agent Board', 'Wiki']);
     for (const [name, target] of [['Ask AI', '/ask-ai'], ['Agent Board', '/agent-board'], ['Home', '/']]) {
       await nav.getByRole('link', { name, exact: true }).click();
       await page.waitForURL(url => url.pathname === target && !url.search);
@@ -186,7 +186,7 @@ const base = process.env.APP_URL || 'http://127.0.0.1:3010';
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole('button', { name: 'Toggle sidebar' }).click();
     const mobileNav = page.locator('nav:visible').filter({ has: page.getByRole('link', { name: 'Home', exact: true }) });
-    assert.deepEqual(await mobileNav.getByRole('link').allTextContents(), ['Home', 'Ask AI', 'Agent Board']);
+    assert.deepEqual(await mobileNav.getByRole('link').allTextContents(), ['Home', 'Ask AI', 'Agent Board', 'Wiki']);
     await mobileNav.getByRole('link', { name: 'Agent Board', exact: true }).click();
     await page.waitForURL('**/agent-board');
     await page.getByRole('heading', { name: 'Agent Board', exact: true }).waitFor();

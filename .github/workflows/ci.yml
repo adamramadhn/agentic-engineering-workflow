@@ -1,0 +1,48 @@
+# CI (epic 3 story 4): the whole verification stack on every change.
+#
+# The test step is exactly `npm run verify` — the same one command as local.
+# Lint has no step of its own anywhere in this file: it runs inside verify as
+# a reported, non-gating stage (pre-existing template-file problems are
+# documented outside this initiative and must not gate CI).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      # No .env.local on a runner (it is gitignored): the two vars it holds
+      # locally are provided here instead. Every harness (build, matrix scratch
+      # DBs, e2e scratch DB) reads this single job-level URL; the service's
+      # postgres user is a superuser, which the per-run CREATE/DROP DATABASE
+      # needs.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      # jwt.ts fails fast at module load without a signing key, and the e2e
+      # boot probe requires a 401 only a booted server can answer. CI-only
+      # throwaway: tokens never leave the runner and die with the job.
+      AUTH_SECRET: ci-only-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Verify (build, lint non-gating, unit, matrix, e2e)
+        run: npm run verify

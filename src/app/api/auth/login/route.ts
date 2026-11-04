@@ -18,9 +18,13 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "Email and password are required" }, { status: 400 });
     }
 
+    // The roles join carries the role's grants so the {user} payload resolves
+    // permissions (COALESCE → [] = deny-all when the role row is missing).
     const result = await query<UserRow>(
-      `SELECT id, name, email, password_hash, role, team, status, created_at
-       FROM users WHERE email = $1`,
+      `SELECT u.id, u.name, u.email, u.password_hash, u.role, u.team, u.status, u.created_at,
+              COALESCE(r.permissions, '[]'::jsonb) AS role_permissions
+       FROM users u LEFT JOIN roles r ON r.key = u.role
+       WHERE u.email = $1`,
       [email]
     );
     const row = result.rows[0];

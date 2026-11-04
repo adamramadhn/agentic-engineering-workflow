@@ -1,14 +1,13 @@
 import { NextRequest } from "next/server";
 import {
-  getSessionUser,
   hashPassword,
   isValidEmail,
   toSessionUser,
   type UserRow,
 } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { requirePermission } from "@/lib/permission-guard";
 
-export const ROLES = ["Admin", "Editor", "Member"] as const;
 export const TEAMS = ["Design", "Engineering", "Marketing", "Operations", "General"] as const;
 
 /** Shape consumed by the users directory table (users-view.tsx). */
@@ -41,10 +40,8 @@ async function listDirectoryUsers(): Promise<DirectoryUser[]> {
 
 export async function GET() {
   try {
-    const user = await getSessionUser();
-    if (!user) {
-      return Response.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    const guard = await requirePermission("users.view");
+    if (!guard.ok) return guard.response;
     const users = await listDirectoryUsers();
     return Response.json({ users });
   } catch (error) {
@@ -55,16 +52,14 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const sessionUser = await getSessionUser();
-    if (!sessionUser) {
-      return Response.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    const guard = await requirePermission("users.create");
+    if (!guard.ok) return guard.response;
 
     const body = await request.json().catch(() => null);
     const name = typeof body?.name === "string" ? body.name.trim() : "";
     const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
     const password = typeof body?.password === "string" ? body.password : "";
-    const role = ROLES.includes(body?.role) ? body.role : "Member";
+    const role = typeof body?.role === "string" ? body.role.trim() : "";
     const team = TEAMS.includes(body?.team) ? body.team : "General";
 
     if (!name || !email || !password) {
@@ -83,6 +78,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Roles are data: the body's role must exist in the roles table.
+    // Unknown role → 400; no silent fallback to a default role.
+    const roleExists = await query(`SELECT key FROM roles WHERE key = $1`, [role]);
+    if (roleExists.rows.length === 0) {
+      return Response.json({ error: "Unknown role" }, { status: 400 });
+    }
+
     const existing = await query(`SELECT id FROM users WHERE email = $1`, [email]);
     if (existing.rows.length > 0) {
       return Response.json(
@@ -91,11 +93,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // The id is a DB-generated UUID (gen_random_uuid()).
+    // The id is a DB-generated UUID (gen_random_uuid()). $4 is the role param —
+    // the RETURNING subselect carries the role's grants so the created user's
+    // session payload resolves permissions (NULL when the role row is missing →
+    // deny-all in toSessionUser).
     const result = await query<UserRow>(
       `INSERT INTO users (name, email, password_hash, role, team, status)
        VALUES ($1, $2, $3, $4, $5, 'Active')
-       RETURNING id, name, email, password_hash, role, team, status, created_at`,
+       RETURNING id, name, email, password_hash, role, team, status, created_at,
+         (SELECT permissions FROM roles WHERE key = $4) AS role_permissions`,
       [name, email, await hashPassword(password), role, team]
     );
 

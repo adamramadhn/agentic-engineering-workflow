@@ -8,10 +8,13 @@ import {
   ArrowRightIcon as ArrowRightIconData,
   ArrowUpIcon as ArrowUpIconData,
   ArrowUpRight01Icon as ArrowUpRight01IconData,
+  Attachment01Icon as Attachment01IconData,
   BellIcon as BellIconData,
+  Book01Icon as Book01IconData,
   DashboardSquareIcon as BoardIconData,
   BotIcon as BotIconData,
   BuildingIcon as BuildingIconData,
+  Cancel01Icon as Cancel01IconData,
   Calendar03Icon as Calendar03IconData,
   CheckCheckIcon as CheckCheckIconData,
   CheckIcon as CheckIconData,
@@ -24,22 +27,27 @@ import {
   ClapperboardIcon as ClapperboardIconData,
   ClipboardIcon as ClipboardIconData,
   Clock01Icon as Clock01IconData,
+  CloudUploadIcon as CloudUploadIconData,
+  Comment02Icon as Comment02IconData,
   CopyIcon as CopyIconData,
   CreditCardIcon as CreditCardIconData,
   DatabaseIcon as DatabaseIconData,
   DollarSignIcon as DollarSignIconData,
   DownloadIcon as DownloadIconData,
+  Edit02Icon as EditIconData,
   ExternalLinkIcon as ExternalLinkIconData,
   EyeIcon as EyeIconData,
   EyeOffIcon as EyeOffIconData,
   FileQuestionMarkIcon as FileQuestionMarkIconData,
   File01Icon as File01IconData,
   FilterIcon as FilterIconData,
+  FloppyDiskIcon as FloppyDiskIconData,
   Folder01Icon as Folder01IconData,
   GitBranchIcon as GitBranchIconData,
   GlobeIcon as GlobeIconData,
   Home01Icon as Home01IconData,
   HomeIcon as HomeIconData,
+  Image01Icon as Image01IconData,
   InfoIcon as InfoIconData,
   KeyRoundIcon as KeyRoundIconData,
   KanbanIcon as KanbanIconData,
@@ -49,6 +57,8 @@ import {
   LayoutIcon as LayoutIconData,
   LineChart as LineChartData,
   Link01Icon as Link01IconData,
+  Link02Icon as Link02IconData,
+  ListIcon as ListIconData,
   Loading03Icon as Loading03IconData,
   LockIcon as LockIconData,
   LogOutIcon as LogOutIconData,
@@ -71,16 +81,21 @@ import {
   SearchIcon as SearchIconData,
   SendIcon as SendIconData,
   Settings01Icon as Settings01IconData,
+  SourceCodeIcon as SourceCodeIconData,
   SettingsIcon as SettingsIconData,
   ShoppingBagIcon as ShoppingBagIconData,
   SlidersHorizontalIcon as SlidersHorizontalIconData,
   SparklesIcon as SparklesIconData,
   SunIcon as SunIconData,
+  Tag01Icon as Tag01IconData,
   TerminalIcon as TerminalIconData,
+  TextBoldIcon as TextBoldIconData,
+  TextItalicIcon as TextItalicIconData,
   TextIcon as TextIconData,
   Trash2 as Trash2Data,
   TrendingUpIcon as TrendingUpIconData,
   TriangleAlertIcon as TriangleAlertIconData,
+  Upload04Icon as Upload04IconData,
   UserCheckIcon as UserCheckIconData,
   UserGroupIcon as UserGroupIconData,
   UserIcon as UserIconData,
@@ -107,12 +122,15 @@ export const ArrowDown = createIcon("ArrowDown", ArrowDownIconData);
 export const ArrowLeft = createIcon("ArrowLeft", ArrowLeftIconData);
 export const ArrowRight = createIcon("ArrowRight", ArrowRightIconData);
 export const ArrowUp = createIcon("ArrowUp", ArrowUpIconData);
+export const Paperclip = createIcon("Paperclip", Attachment01IconData);
 export const Bell = createIcon("Bell", BellIconData);
+export const WikiIcon = createIcon("WikiIcon", Book01IconData);
 export const Board = createIcon("Board", BoardIconData);
 export const Layout = createIcon("Layout", LayoutIconData);
 export const Kanban = createIcon("Kanban", KanbanIconData);
 export const Bot = createIcon("Bot", BotIconData);
 export const Building = createIcon("Building", BuildingIconData);
+export const CancelIcon = createIcon("CancelIcon", Cancel01IconData);
 export const Check = createIcon("Check", CheckIconData);
 export const CheckCheck = createIcon("CheckCheck", CheckCheckIconData);
 export const CheckCircle2 = createIcon("CheckCircle2", CheckmarkCircle02IconData);
@@ -132,6 +150,7 @@ export const CreditCard = createIcon("CreditCard", CreditCardIconData);
 export const Database = createIcon("Database", DatabaseIconData);
 export const DollarSign = createIcon("DollarSign", DollarSignIconData);
 export const Download = createIcon("Download", DownloadIconData);
+export const EditIcon = createIcon("EditIcon", EditIconData);
 export const ExternalLink = createIcon("ExternalLink", ExternalLinkIconData);
 export const Eye = createIcon("Eye", EyeIconData);
 export const EyeOff = createIcon("EyeOff", EyeOffIconData);
@@ -139,9 +158,11 @@ export const FileQuestion = createIcon("FileQuestion", FileQuestionMarkIconData)
 export const FileDoc = createIcon("FileDoc", File01IconData);
 export const Filter = createIcon("Filter", FilterIconData);
 export const Folder = createIcon("Folder", Folder01IconData);
+export const SaveIcon = createIcon("SaveIcon", FloppyDiskIconData);
 export const GitBranch = createIcon("GitBranch", GitBranchIconData);
 export const Globe = createIcon("Globe", GlobeIconData);
 export const Home = createIcon("Home", HomeIconData);
+export const ImageIcon = createIcon("ImageIcon", Image01IconData);
 export const Info = createIcon("Info", InfoIconData);
 export const InfoIcon = createIcon("InfoIcon", InfoIconData);
 export const KeyRound = createIcon("KeyRound", KeyRoundIconData);
@@ -169,17 +190,22 @@ export const RotateCcw = createIcon("RotateCcw", RotateCcwIconData);
 export const Search = createIcon("Search", SearchIconData);
 export const SearchIcon = createIcon("SearchIcon", SearchIconData);
 export const Send = createIcon("Send", SendIconData);
+export const CodeIcon = createIcon("CodeIcon", SourceCodeIconData);
 export const Settings = createIcon("Settings", SettingsIconData);
 export const ShoppingBag = createIcon("ShoppingBag", ShoppingBagIconData);
 export const Sliders = createIcon("Sliders", SlidersHorizontalIconData);
 export const SlidersHorizontal = createIcon("SlidersHorizontal", SlidersHorizontalIconData);
 export const Sparkles = createIcon("Sparkles", SparklesIconData);
 export const Sun = createIcon("Sun", SunIconData);
+export const TagIcon = createIcon("TagIcon", Tag01IconData);
 export const Terminal = createIcon("Terminal", TerminalIconData);
 export const Text = createIcon("Text", TextIconData);
+export const BoldIcon = createIcon("BoldIcon", TextBoldIconData);
+export const ItalicIcon = createIcon("ItalicIcon", TextItalicIconData);
 export const Trash2 = createIcon("Trash2", Trash2Data);
 export const TrendingUp = createIcon("TrendingUp", TrendingUpIconData);
 export const TriangleAlert = createIcon("TriangleAlert", TriangleAlertIconData);
+export const UploadIcon = createIcon("UploadIcon", Upload04IconData);
 export const TriangleAlertIcon = createIcon("TriangleAlertIcon", TriangleAlertIconData);
 export const User = createIcon("User", UserIconData);
 export const UserCheck = createIcon("UserCheck", UserCheckIconData);
@@ -191,8 +217,12 @@ export const XIcon = createIcon("XIcon", XIconData);
 export const Zap = createIcon("Zap", ZapIconData);
 export const ArrowUpRight = createIcon("ArrowUpRight", ArrowUpRight01IconData);
 export const Clock = createIcon("Clock", Clock01IconData);
+export const CloudUpload = createIcon("CloudUpload", CloudUploadIconData);
+export const CommentIcon = createIcon("CommentIcon", Comment02IconData);
 export const Calendar = createIcon("Calendar", Calendar03IconData);
 export const Link = createIcon("Link", Link01IconData);
+export const Link02 = createIcon("Link02", Link02IconData);
+export const ListIcon = createIcon("ListIcon", ListIconData);
 export const ConnectIcon = createIcon("ConnectIcon", PlugSocketIconData);
 export const HomeIcon = createIcon("HomeIcon", Home01IconData);
 export const MetricsIcon = createIcon("MetricsIcon", PieChartIconData);

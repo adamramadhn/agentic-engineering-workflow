@@ -15,14 +15,22 @@ import {
 import { useSidebar } from "@/components/ui/sidebar";
 import { UserProfileMenu } from "./user-profile-menu";
 import { WorkspaceSwitcher } from "./workspace-switcher";
+import { usePermission } from "./permission-provider";
+import { pageViewPermission } from "@/lib/permissions";
 import { ADMIN_PAGES, WORKSPACE_PAGES, WATCHED_COMPANIES } from "./navigation";
 import { toast } from "sonner";
 
 function AdminNavigation({ currentRoute, collapsed = false, onNavigate }: { currentRoute: string; collapsed?: boolean; onNavigate?: () => void }) {
+  const { can } = usePermission();
+  // Admin entries gate on pageViewPermission — the future /permissions page
+  // (story 2.3) shares roles.view instead of owning a catalog resource.
+  const adminPages = ADMIN_PAGES.filter(item => can(pageViewPermission(item.id)));
+  // The whole section — label included — disappears when nothing is grantable.
+  if (adminPages.length === 0) return null;
   return (
     <nav aria-label="Admin" className="mt-[22px] flex w-full flex-col gap-1.5">
       {!collapsed && <p className="px-2.5 text-xs font-medium text-muted-foreground">Admin</p>}
-      {ADMIN_PAGES.map(item => <Link key={item.id} href={item.href} aria-label={item.label} title={collapsed ? item.label : undefined} aria-current={currentRoute === item.id ? "page" : undefined} onClick={onNavigate}
+      {adminPages.map(item => <Link key={item.id} href={item.href} aria-label={item.label} title={collapsed ? item.label : undefined} aria-current={currentRoute === item.id ? "page" : undefined} onClick={onNavigate}
         className={cn("flex h-8 items-center gap-2.5 rounded-lg text-[13px] font-medium transition-colors", collapsed ? "mx-auto size-9 justify-center" : "w-full px-2.5", currentRoute === item.id ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent")}>
         <item.icon className="size-4 shrink-0" aria-hidden="true" />{!collapsed && <span>{item.label}</span>}
       </Link>)}
@@ -43,6 +51,7 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const { open, toggleSidebar, openMobile, setOpenMobile } = useSidebar();
   const isCollapsed = !open;
+  const { can } = usePermission();
 
   const [currentWorkspace, setCurrentWorkspace] = useState("Onyx");
 
@@ -57,7 +66,11 @@ export function AppSidebar({
     toast.success(`Switched workspace to ${name}`);
   };
 
-  const navItems = WORKSPACE_PAGES;
+  // Permission-filtered nav: mobile and desktop maps both render this list, so
+  // an ungrantable page never appears in either (hidden is the safe direction
+  // while permissions are still loading, too).
+  const navItems = WORKSPACE_PAGES.filter(page => can(`${page.id}.view`));
+  const canWatchWatching = can("watching.view");
   const watchingItems = WATCHED_COMPANIES;
 
   return (
@@ -138,7 +151,9 @@ export function AppSidebar({
 
           <AdminNavigation currentRoute={currentRoute} onNavigate={() => setOpenMobile(false)} />
 
-          {/* Watching Section on Mobile */}
+          {/* Watching Section on Mobile — the whole section (header, companies,
+              "Show all") exists only under watching.view */}
+          {canWatchWatching && (
           <div className="mt-[22px] w-full">
             <div className="flex h-5 items-center gap-1.5 px-2.5 text-[12px] font-medium text-neutral-500 dark:text-neutral-400">
               <ChevronUp className="size-3 text-neutral-400 shrink-0" />
@@ -177,6 +192,7 @@ export function AppSidebar({
               </Link>
             </div>
           </div>
+          )}
         </div>
 
         {/* User Footer Profile Dropdown on Mobile */}
@@ -282,7 +298,8 @@ export function AppSidebar({
 
           <AdminNavigation currentRoute={currentRoute} collapsed={isCollapsed} />
 
-          {/* Watching Section */}
+          {/* Watching Section — same watching.view gate as the mobile drawer */}
+          {canWatchWatching && (
           <div className="mt-[22px] w-full overflow-hidden">
             <div className="relative h-5 w-full overflow-hidden">
               {!isCollapsed ? (
@@ -346,6 +363,7 @@ export function AppSidebar({
               </Link>
             </div>
           </div>
+          )}
         </div>
 
         {/* User Footer Profile Dropdown */}
