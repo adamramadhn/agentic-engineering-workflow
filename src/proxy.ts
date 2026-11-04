@@ -11,6 +11,8 @@ const PROTECTED_PREFIXES = [
   "/agent-board",
   "/ask-ai",
   "/watching",
+  "/wiki",
+  "/storage",
   "/roles",
   "/permissions",
 ];

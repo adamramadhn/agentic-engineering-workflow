@@ -44,6 +44,7 @@ const SHORT_VERB_LABELS: Record<Verb, string> = {
   delete: "Delete",
   use: "Use",
   manage: "Manage",
+  comment: "Comment",
 };
 
 function shortVerbLabel(verb: Verb): string {

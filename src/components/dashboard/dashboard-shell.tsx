@@ -62,7 +62,12 @@ function DashboardContent({ route, children }: { route: WorkspaceRoute; children
 export function DashboardShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const route: WorkspaceRoute = ALL_PAGES.find(page => page.href === pathname)?.id ?? "watching";
+  // Exact match first, then prefix: /wiki/<page-id> must keep the Wiki entry
+  // highlighted rather than falling through to the Watching default.
+  const route: WorkspaceRoute =
+    ALL_PAGES.find(page => page.href === pathname)?.id ??
+    ALL_PAGES.find(page => pathname.startsWith(`${page.href}/`))?.id ??
+    "watching";
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const handleNavigate = (destination: string) => {
     const href = workspaceHref(destination);

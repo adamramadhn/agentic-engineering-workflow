@@ -14,7 +14,7 @@
  */
 import type { ALL_PAGES } from "@/components/dashboard/navigation";
 
-export type Verb = "view" | "create" | "update" | "delete" | "use" | "manage";
+export type Verb = "view" | "create" | "update" | "delete" | "use" | "manage" | "comment";
 
 /** Nav-page ids that require a verbs entry. `watching` is a WorkspaceRoute that
  *  is not part of ALL_PAGES, so it is added explicitly here. */
@@ -56,8 +56,10 @@ const VERBS_BY_PAGE: Record<VerbsPageId, readonly Verb[]> = {
   home: ["view"],
   "ask-ai": ["view", "use"],
   "agent-board": ["view"],
+  wiki: ["view", "create", "update", "delete", "comment"],
   watching: ["view"],
   users: ["view", "create", "update", "delete"],
+  storage: ["view", "manage"],
 };
 
 /** Human group heading per resource — the matrix UI's row groups and the i18n
@@ -66,8 +68,10 @@ const RESOURCE_LABELS: Record<string, string> = {
   home: "Home",
   "ask-ai": "Ask AI",
   "agent-board": "Agent Board",
+  wiki: "Wiki",
   watching: "Watching",
   users: "Users",
+  storage: "Storage",
   roles: "Roles",
 };
 
@@ -107,11 +111,18 @@ export const PERMISSION_LABELS: Record<string, string> = {
   "ask-ai.view": "View Ask AI",
   "ask-ai.use": "Use Ask AI",
   "agent-board.view": "View Agent Board",
+  "wiki.view": "View Wiki",
+  "wiki.create": "Create wiki pages",
+  "wiki.update": "Edit wiki pages",
+  "wiki.delete": "Delete wiki pages",
+  "wiki.comment": "Comment on wiki pages",
   "watching.view": "View Watching",
   "users.view": "View users",
   "users.create": "Create users",
   "users.update": "Update users",
   "users.delete": "Delete users",
+  "storage.view": "View storage settings",
+  "storage.manage": "Manage storage settings",
   "roles.view": "View roles & permissions",
   "roles.manage": "Manage roles & permissions",
 };

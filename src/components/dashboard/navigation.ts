@@ -1,10 +1,11 @@
-import { Bot, KeyRound, SlidersHorizontal, Sparkles, Users } from "@/components/icons";
+import { Bot, Database, KeyRound, SlidersHorizontal, Sparkles, Users, WikiIcon } from "@/components/icons";
 import { HomeIcon } from "./icons";
 
 export const WORKSPACE_PAGES = [
   { id: "home", href: "/", label: "Home", icon: HomeIcon },
   { id: "ask-ai", href: "/ask-ai", label: "Ask AI", icon: Sparkles },
   { id: "agent-board", href: "/agent-board", label: "Agent Board", icon: Bot },
+  { id: "wiki", href: "/wiki", label: "Wiki", icon: WikiIcon },
 ] as const;
 
 export const ADMIN_PAGES = [
@@ -13,6 +14,7 @@ export const ADMIN_PAGES = [
   // Gated by pageViewPermission("permissions") → roles.view: the page renders
   // the roles resource's permissions, so it owns no verbs of its own.
   { id: "permissions", href: "/permissions", label: "Permissions", icon: SlidersHorizontal },
+  { id: "storage", href: "/storage", label: "Storage", icon: Database },
 ] as const;
 
 export const ALL_PAGES = [...WORKSPACE_PAGES, ...ADMIN_PAGES];

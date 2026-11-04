@@ -12,18 +12,26 @@ import {
   type RoleGrantsUsage,
 } from "./permissions";
 
-/** The full v1 catalog in display order — the deterministic order the resolver
- *  must emit regardless of grant order or duplicates. */
+/** The full catalog in display order — the deterministic order the resolver
+ *  must emit regardless of grant order or duplicates. v1 was 11 keys; the wiki
+ *  + storage initiative (v2 of the catalog) adds 7. */
 const CATALOG_ORDER = [
   "home.view",
   "ask-ai.view",
   "ask-ai.use",
   "agent-board.view",
+  "wiki.view",
+  "wiki.create",
+  "wiki.update",
+  "wiki.delete",
+  "wiki.comment",
   "watching.view",
   "users.view",
   "users.create",
   "users.update",
   "users.delete",
+  "storage.view",
+  "storage.manage",
   "roles.view",
   "roles.manage",
 ] as const;
@@ -44,6 +52,24 @@ describe("resolvePermissions", () => {
   it('expands a known resource wildcard to that resource\'s keys only', () => {
     expect(resolvePermissions(["users.*"])).toEqual([...USERS_KEYS]);
     expect(resolvePermissions(["roles.*"])).toEqual(["roles.view", "roles.manage"]);
+  });
+
+  it("expands the wiki wildcard to all five wiki verbs, comment included", () => {
+    expect(resolvePermissions(["wiki.*"])).toEqual([
+      "wiki.view",
+      "wiki.create",
+      "wiki.update",
+      "wiki.delete",
+      "wiki.comment",
+    ]);
+    // `comment` is a first-class verb, not a synonym for update: a role may
+    // hold wiki.update without wiki.comment and vice versa.
+    expect(resolvePermissions(["wiki.update"])).toEqual(["wiki.update"]);
+    expect(resolvePermissions(["wiki.comment"])).toEqual(["wiki.comment"]);
+  });
+
+  it("expands the storage wildcard to view + manage", () => {
+    expect(resolvePermissions(["storage.*"])).toEqual(["storage.view", "storage.manage"]);
   });
 
   it("drops unknown concrete keys and unknown resource wildcards (dead grants are inert)", () => {
@@ -174,9 +200,9 @@ describe("pageViewPermission", () => {
 // --- catalog integrity: keys, groups, labels stay in sync ------------------
 
 describe("catalog integrity", () => {
-  it("defines exactly the 11 v1 keys, in catalog order", () => {
+  it("defines exactly the 18 catalog keys, in catalog order", () => {
     expect(ALL_PERMISSION_KEYS).toEqual([...CATALOG_ORDER]);
-    expect(ALL_PERMISSION_KEYS).toHaveLength(11);
+    expect(ALL_PERMISSION_KEYS).toHaveLength(18);
   });
 
   it("has a verbs entry (own or aliased) for every nav page id plus watching", () => {
@@ -204,8 +230,10 @@ describe("catalog integrity", () => {
       "home",
       "ask-ai",
       "agent-board",
+      "wiki",
       "watching",
       "users",
+      "storage",
       "roles",
     ]);
   });

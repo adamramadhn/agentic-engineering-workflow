@@ -75,6 +75,46 @@ export async function api(
 }
 
 /**
+ * Multipart twin of api() for the upload route — route handlers read
+ * `request.formData()`, so the body must never be JSON-stringified here.
+ * `files` entries become File parts with the given name, type and bytes.
+ */
+export async function apiForm(
+  path: string,
+  options: {
+    method?: string;
+    cookie?: string;
+    fields?: Record<string, string>;
+    files?: Record<string, { name: string; type: string; bytes: Uint8Array<ArrayBuffer> }>;
+  } = {},
+): Promise<ApiResult> {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(options.fields ?? {})) {
+    form.append(key, value);
+  }
+  for (const [key, file] of Object.entries(options.files ?? {})) {
+    form.append(key, new File([file.bytes], file.name, { type: file.type }));
+  }
+  const headers: Record<string, string> = {};
+  if (options.cookie !== undefined) headers["Cookie"] = options.cookie;
+  const response = await fetch(`${baseUrl()}${path}`, {
+    method: options.method ?? "POST",
+    headers,
+    body: form,
+  });
+  const text = await response.text();
+  let body: unknown = undefined;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
+  }
+  return { status: response.status, body };
+}
+
+/**
  * Login through the real endpoint and capture the access-cookie pair
  * (`onyx_access=<jwt>`) from the response's set-cookie — exactly the string a
  * browser would send back, which api() replays as the Cookie header.
@@ -174,6 +214,64 @@ export async function auditCount(roleKey: string, action?: string): Promise<numb
     action ? [roleKey, action] : [roleKey],
   );
   return Number(result.rows[0]?.count ?? 0);
+}
+
+// --- wiki -------------------------------------------------------------------
+
+export interface WikiAuditRow {
+  id: string;
+  actor_id: string | null;
+  action: string;
+  target: string;
+  diff: unknown;
+  created_at: Date;
+}
+
+/** wiki_audit rows for one target (optionally one action), oldest first. */
+export async function wikiAuditRows(target: string, action?: string): Promise<WikiAuditRow[]> {
+  const result = await getPool().query<WikiAuditRow>(
+    `SELECT id, actor_id, action, target, diff, created_at
+     FROM wiki_audit
+     WHERE target = $1${action ? " AND action = $2" : ""}
+     ORDER BY created_at ASC, id ASC`,
+    action ? [target, action] : [target],
+  );
+  return result.rows;
+}
+
+export async function wikiAuditCount(target: string, action?: string): Promise<number> {
+  const result = await getPool().query<{ count: number }>(
+    `SELECT COUNT(*)::int AS count FROM wiki_audit
+     WHERE target = $1${action ? " AND action = $2" : ""}`,
+    action ? [target, action] : [target],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+/**
+ * Drop every wiki row this suite created. Page children (labels links,
+ * comments, attachments) cascade with the page; wiki_audit deliberately
+ * survives — its `target` is a raw string, not an FK, exactly like role_audit.
+ */
+export async function cleanupWikiFixtures(
+  titlePrefix = "Matrix Wiki",
+  labelPrefix = "matrix-wiki-",
+): Promise<void> {
+  await getPool().query(`DELETE FROM wiki_pages WHERE title LIKE $1`, [`${titlePrefix}%`]);
+  await getPool().query(`DELETE FROM wiki_labels WHERE name LIKE $1`, [`${labelPrefix}%`]);
+}
+
+/** Remove the storage settings row, restoring the "unconfigured" 503 state. */
+export async function clearStorageSettings(): Promise<void> {
+  await getPool().query(`DELETE FROM app_settings WHERE key = 'storage'`);
+}
+
+/** The stored storage settings value, raw — for asserting what was persisted. */
+export async function storedStorageSettings(): Promise<unknown> {
+  const result = await getPool().query<{ value: unknown }>(
+    `SELECT value FROM app_settings WHERE key = 'storage'`,
+  );
+  return result.rows[0]?.value ?? null;
 }
 
 /**
