@@ -24,10 +24,10 @@ const stateColor: Record<AgentTaskState, string> = {
 export function AgentTaskStatus({ state, duration }: { state: AgentTaskState; duration: string }) {
   const Icon = stateIcons[state];
   return (
-    <span className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted-foreground">
+    <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-[12.5px] tabular-nums text-muted-foreground">
       <Icon className={cn("size-3 shrink-0", stateColor[state], state === "running" && "motion-safe:animate-spin")} />
-      {state === "waiting" && <span className="truncate">Waiting for you ·&nbsp;</span>}
-      {state === "failed" && <span className="truncate">Failed ·&nbsp;</span>}
+      {state === "waiting" && <span>Waiting for you ·&nbsp;</span>}
+      {state === "failed" && <span>Failed ·&nbsp;</span>}
       <time>{duration}</time>
     </span>
   );
@@ -68,21 +68,21 @@ export function AgentTaskCard({
       data-state={task.state}
       data-open={open ? "true" : "false"}
       data-just-moved={justMoved ? "true" : undefined}
-      className="t-acc rounded-[10px] bg-card shadow-xs ring-1 ring-black/[0.08] transition-[translate,scale,box-shadow] duration-150 ease-out hover:-translate-y-px hover:shadow-md active:scale-[0.99] motion-reduce:transition-none motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-none motion-reduce:active:scale-100 dark:ring-white/[0.08]"
+      className="t-acc min-w-0 rounded-[10px] bg-card shadow-xs ring-1 ring-black/[0.08] transition-[translate,scale,box-shadow] duration-150 ease-out hover:-translate-y-px hover:shadow-md active:scale-[0.99] motion-reduce:transition-none motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-none motion-reduce:active:scale-100 dark:ring-white/[0.08]"
     >
       <button
         type="button"
         aria-expanded={open}
         aria-controls={foldId}
         onClick={() => onToggle(task.id)}
-        className="flex w-full cursor-pointer flex-col gap-1.5 rounded-[10px] p-3 pl-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="flex w-full min-w-0 cursor-pointer flex-col items-stretch gap-1.5 rounded-[10px] p-3 text-start focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
-        <span className="flex min-w-0 items-center gap-2">
-          <Sparkles className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate text-sm font-medium">{task.title}</span>
+        <span className="flex min-w-0 items-start gap-2">
+          <Sparkles className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">{task.title}</span>
         </span>
-        <span className="text-[13px] leading-[19px] text-muted-foreground">{task.description}</span>
-        <span className="mt-0.5 flex items-center justify-between gap-3">
+        <span className="min-w-0 text-[13px] leading-normal text-muted-foreground [overflow-wrap:anywhere]">{task.description}</span>
+        <span className="mt-0.5 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
           <AgentTaskStatus state={task.state} duration={task.duration} />
           <span className="flex shrink-0 items-center gap-3">
             <AgentTaskMeta task={task} />
@@ -162,7 +162,7 @@ export function AgentBoardColumn({
         <h2 id={`agent-column-${id}`} className="flex-1 text-[11px] font-medium text-muted-foreground">{label}</h2>
         <span className="rounded-md bg-foreground/[0.06] px-[5px] text-[11px] leading-[17px] tabular-nums text-muted-foreground" aria-label={`${label}: ${tasks.length} tasks`}>{tasks.length}</span>
       </header>
-      <ul className="grid list-none gap-1.5">
+      <ul className="grid min-w-0 grid-cols-1 list-none gap-1.5">
         {tasks.map(task => (
           <AgentTaskCard key={task.id} task={task} open={openIds.includes(task.id)} justMoved={justMovedId === task.id} onToggle={onToggle} onApprove={onApprove} onReject={onReject} />
         ))}
