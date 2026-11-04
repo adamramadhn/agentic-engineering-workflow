@@ -91,6 +91,31 @@ async function checkGeometry(page, selector) {
         await checkGeometry(page, "[data-agent-task]");
         if (width === 1600 || width === 320) await page.screenshot({ path: path.join(output, `board-${theme}-${width}.png`) });
         await treeTab.click();
+        for (const scenario of ["bmad", "pricing"]) {
+          await page.getByRole("button", { name: "Demo scenario", exact: true }).click();
+          const scenarioOption = page.getByRole("radio", { name: scenario === "bmad" ? "BMad sprint · 2 branches" : "Pricing page · 3 branches", exact: true });
+          await scenarioOption.click();
+          assert.equal(await scenarioOption.getAttribute("aria-checked"), "true");
+          assert.equal(await page.getByRole("radio", { checked: true }).count(), 1);
+          await page.keyboard.press("Escape");
+          await settle(page);
+          await checkGeometry(page, "[data-worktree-card]");
+          if (await page.locator('.worktree-canvas').evaluate(canvas => canvas.clientWidth - 40 >= 700)) {
+            const widths = await page.locator('[data-worktree-card]').evaluateAll(cards => cards.map(card => card.getBoundingClientRect().width));
+            assert.ok(widths.every(value => value <= 249), `${scenario}: cards must stay compact, got ${widths}`);
+            const junction = await page.locator('.worktree-root > .worktree-children').evaluate(panel => {
+              const stem = getComputedStyle(panel, '::before');
+              const child = panel.querySelector('.worktree-columns > .worktree-node');
+              const branch = getComputedStyle(child, '::before');
+              return {
+                stemBottom: panel.getBoundingClientRect().top + parseFloat(stem.top) + parseFloat(stem.height),
+                branchTop: child.getBoundingClientRect().top + parseFloat(branch.top),
+              };
+            });
+            assert.ok(Math.abs(junction.stemBottom - junction.branchTop) < 1, `${scenario}: root connector must stop at branch junction: ${JSON.stringify(junction)}`);
+          }
+          if (width === 1600 || width === 320) await page.screenshot({ path: path.join(output, `${scenario}-${theme}-${width}.png`) });
+        }
         await page.locator('[data-worktree-card="run-orchestrator"]').waitFor();
         await page.locator('.worktree-name').evaluateAll(names => names.forEach(name => { name.textContent = "BMad Master Orchestrator " + "LongAgentIdentifier".repeat(3); }));
         await settle(page);

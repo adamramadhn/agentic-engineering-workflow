@@ -13,9 +13,13 @@ import {
   bmadNodeToWorktreeNode,
   type WorktreeNode,
 } from "./worktree-tree-data";
-import { Kanban, GitBranch } from "@/components/icons";
+import { Kanban, GitBranch, Filter } from "@/components/icons";
+import { Button } from "@/components/ui/button-clean";
+import { FilterMenu } from "@/components/ui/filter-menu-clean";
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { SegmentedControl } from "@/components/ui/segmented-control-clean";
 import type { BMadAgentTreeNode, BMadTaskItem } from "@/lib/bmad";
+import "./search-filter-controls.css";
 
 export function AgentBoardView() {
   const [tasks, setTasks] = useState<AgentTask[]>(demoAgentTasks);
@@ -26,6 +30,7 @@ export function AgentBoardView() {
   const [tab, setTab] = useState<"board" | "worktree">("board");
   const [isLiveSyncing, setIsLiveSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const [worktreeSample, setWorktreeSample] = useState("live");
 
   const fetchLiveBMadData = useCallback(async () => {
     try {
@@ -197,6 +202,11 @@ export function AgentBoardView() {
     }
   };
 
+  const demoWorktreeSamples: Record<string, WorktreeNode> = {
+    live: worktreeRun,
+    pricing: demoWorktreeRun,
+  };
+
   return (
     <section aria-label="Agent Board" className="flex min-w-0 flex-col gap-4 pb-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -265,7 +275,25 @@ export function AgentBoardView() {
           hidden={tab !== "worktree"}
           className="mt-2 min-w-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
-          {tab === "worktree" && <WorktreeTree run={worktreeRun} />}
+          <div className="search-filter-controls mb-4">
+            <Popover>
+              <PopoverTrigger render={<Button size="lg" variant="secondary" className="search-filter-trigger" icon={<Filter />} aria-label="Demo scenario" />}>
+                {worktreeSample === "live" ? "BMad live tree · database" : "Pricing page · 3 branches"}
+              </PopoverTrigger>
+              <PopoverContent unstyled align="start" className="search-filter-popover">
+                <PopoverTitle className="sr-only">Choose demo scenario</PopoverTitle>
+                <FilterMenu title="Demo scenario" selectionMode="single"
+                  groups={[{ id: "scenario", label: "Scenario", options: [
+                    { id: "live", label: "BMad live tree · database" },
+                    { id: "pricing", label: "Pricing page · 3 branches" },
+                  ] }]}
+                  value={{ scenario: [worktreeSample] }}
+                  onChange={value => { if (value.scenario?.[0]) setWorktreeSample(value.scenario[0]); }} />
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          {tab === "worktree" && <WorktreeTree key={worktreeSample} run={demoWorktreeSamples[worktreeSample] ?? demoWorktreeSamples.live} />}
           <p className="mt-4 text-xs text-muted-foreground">
             Pohon agen BMad Monitor real-time · Metrik Token Usage (input, output, cache) dilaporkan secara otomatis oleh sub-agent.
           </p>
