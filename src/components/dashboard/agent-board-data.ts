@@ -77,6 +77,29 @@ export function bmadTaskToAgentTask(item: {
   };
 }
 
+export function parseDurationToSeconds(str: string): number {
+  if (!str) return 0;
+  const minMatch = str.match(/(\d+)\s*m/);
+  const secMatch = str.match(/(\d+)\s*s/);
+  const mins = minMatch ? parseInt(minMatch[1], 10) : 0;
+  const secs = secMatch ? parseInt(secMatch[1], 10) : 0;
+  if (!minMatch && !secMatch) {
+    const rawNum = parseInt(str, 10);
+    return isNaN(rawNum) ? 0 : rawNum;
+  }
+  return mins * 60 + secs;
+}
+
+export function formatSecondsToDuration(totalSecs: number): string {
+  const s = Math.max(0, Math.floor(totalSecs));
+  const mins = Math.floor(s / 60);
+  const remSecs = s % 60;
+  if (mins > 0) {
+    return `${mins}m ${remSecs < 10 ? `0${remSecs}` : remSecs}s`;
+  }
+  return `${remSecs}s`;
+}
+
 export const agentColumns: { id: AgentColumnId; label: string }[] = [
   { id: "needs-you", label: "Needs You" },
   { id: "running", label: "Running" },

@@ -1,10 +1,18 @@
 "use client";
 
-import type { ComponentType } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { AlertCircle, AlertTriangle, Check, ChevronDown, Loader2, Search, Sparkles, Wrench } from "@/components/icons";
 import { Button } from "@/components/ui/button-clean";
 import { cn } from "@/lib/utils";
-import { agentColumns, agentTaskColumn, type AgentColumnId, type AgentTask, type AgentTaskState } from "./agent-board-data";
+import {
+  agentColumns,
+  agentTaskColumn,
+  parseDurationToSeconds,
+  formatSecondsToDuration,
+  type AgentColumnId,
+  type AgentTask,
+  type AgentTaskState,
+} from "./agent-board-data";
 
 const stateIcons: Record<AgentTaskState, ComponentType<{ className?: string }>> = {
   waiting: AlertTriangle,
@@ -23,12 +31,25 @@ const stateColor: Record<AgentTaskState, string> = {
 
 export function AgentTaskStatus({ state, duration }: { state: AgentTaskState; duration: string }) {
   const Icon = stateIcons[state];
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (state !== "running") return;
+    const interval = setInterval(() => {
+      setElapsed(prev => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [state]);
+
+  const baseSeconds = parseDurationToSeconds(duration);
+  const displayDuration = state === "running" ? formatSecondsToDuration(baseSeconds + elapsed) : duration;
+
   return (
     <span className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted-foreground">
       <Icon className={cn("size-3 shrink-0", stateColor[state], state === "running" && "motion-safe:animate-spin")} />
       {state === "waiting" && <span className="truncate">Waiting for you ·&nbsp;</span>}
       {state === "failed" && <span className="truncate">Failed ·&nbsp;</span>}
-      <time>{duration}</time>
+      <time className="tabular-nums">{displayDuration}</time>
     </span>
   );
 }

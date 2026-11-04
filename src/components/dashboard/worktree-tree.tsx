@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { ChatGptIcon, ClaudeIcon, FigmaIcon, GithubIcon, GoogleGeminiIcon, NotionIcon, SlackIcon, StripeIcon } from "@hugeicons/core-free-icons";
 import type { AgentTaskState } from "./agent-board-data";
+import { parseDurationToSeconds, formatSecondsToDuration } from "./agent-board-data";
 import { formatTokens, type WorktreeAvatar, type WorktreeNode, type WorktreeTool } from "./worktree-tree-data";
 import { AlertCircle, Check, ChevronDown, Clock } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -81,6 +82,20 @@ function WorktreeCard({ node, open, onToggle }: {
   onToggle: (id: string) => void;
 }) {
   const childCount = node.children?.length ?? 0;
+  const isRunning = node.state === "running";
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!isRunning) return;
+    const interval = setInterval(() => {
+      setElapsed(s => s + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isRunning]);
+
+  const baseSeconds = parseDurationToSeconds(node.time);
+  const displayTime = isRunning ? formatSecondsToDuration(baseSeconds + elapsed) : node.time;
+
   return (
     <div
       data-worktree-card={node.id}
@@ -115,7 +130,7 @@ function WorktreeCard({ node, open, onToggle }: {
         ) : (
           <span className="text-foreground">{node.cost}</span>
         )}
-        <span className="worktree-model">· {node.time}</span>
+        <span className="worktree-model">· {displayTime}</span>
         {childCount > 0 && (
           <button
             type="button"
