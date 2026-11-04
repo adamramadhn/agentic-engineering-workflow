@@ -125,6 +125,26 @@ async function checkGeometry(page, selector) {
       passed.push(`${direction}: 200% text resize at 800px`);
     }
     await page.evaluate(() => { document.documentElement.dir = "ltr"; document.documentElement.style.fontSize = ""; });
+    // Container queries must follow the host, including a flex column that does
+    // not stretch its children. Inline-size containment otherwise collapses it.
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    for (const width of [900, 600, 320, 240]) {
+      await page.locator('.worktree-canvas').evaluate((canvas, width) => {
+        canvas.parentElement.style.cssText = `display: flex; flex-direction: column; align-items: flex-start; width: ${width}px; max-width: 100%`;
+      }, width);
+      await settle(page);
+      const sizes = await page.locator('.worktree-canvas').evaluate(canvas => ({
+        canvas: canvas.getBoundingClientRect().width,
+        host: canvas.parentElement.getBoundingClientRect().width,
+        overflows: canvas.scrollWidth > canvas.clientWidth,
+      }));
+      assert.ok(Math.abs(sizes.canvas - sizes.host) < 1, `Worktree must fill its ${width}px host: ${JSON.stringify(sizes)}`);
+      assert.equal(sizes.overflows, false);
+      await checkGeometry(page, '[data-worktree-card]');
+      if (width === 600) await page.screenshot({ path: path.join(output, 'worktree-container-600.png') });
+      passed.push(`Worktree fills ${width}px non-stretching flex container without clipping`);
+    }
+    await page.locator('.worktree-canvas').evaluate(canvas => canvas.parentElement.removeAttribute('style'));
     const root = page.getByRole("treeitem", { level: 1 });
     await page.keyboard.press("Tab");
     await root.focus();

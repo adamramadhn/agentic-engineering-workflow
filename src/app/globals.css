@@ -527,6 +527,8 @@ nextjs-portal,
    tokens with Board. Each t-acc controls only its direct panel. */
 .worktree-canvas {
   container-type: inline-size;
+  width: 100%;
+  min-width: 0;
   padding: 16px 20px 24px;
   border-radius: 12px;
   background: #fafafa;
