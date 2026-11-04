@@ -545,7 +545,7 @@ nextjs-portal,
   --worktree-subtle: #b1b1b1;
 }
 .worktree-tree {
-  width: min(888px, 100%);
+  width: min(calc(var(--worktree-column-count, 3) * 288px - 40px), 100%);
   margin-inline: auto;
   list-style: none;
 }
@@ -673,7 +673,8 @@ nextjs-portal,
   position: absolute;
   top: 0;
   inset-inline-start: 50%;
-  height: 40px;
+  /* Stop at the branch junction, halfway through the 40px row gap. */
+  height: 20px;
   border-inline-start: 1.5px solid var(--worktree-line);
 }
 .worktree-port, .worktree-root > .worktree-children::before {

@@ -16,6 +16,35 @@ export type WorktreeNode = {
   children?: WorktreeNode[];
 };
 
+/** Screenshot-matching local fixture; no agents execute and no database is changed. */
+export const bmadWorktreeRun: WorktreeNode = {
+  id: "bmad-orchestrator", agent: "BMad Master Orchestrator", model: "claude-opus-5-5",
+  state: "running", task: "Mengkoordinasikan analisis arsitektur dan eksekusi task sprint",
+  cost: "21.6k tokens", time: "1m 36s", avatar: "claude", tools: ["github", "notion"],
+  children: [
+    {
+      id: "bmad-analyst", agent: "BMad Analyst", model: "claude-sonnet-5-5",
+      state: "running", task: "Menganalisis file context docs/PRD.md dan mengidentifikasi dependensi domain",
+      cost: "14.6k tokens", time: "54s", avatar: "claude", tools: ["github"],
+    },
+    {
+      id: "bmad-architect", agent: "BMad Architect", model: "claude-sonnet-5-5",
+      state: "waiting", task: "Menyiapkan rancangan solusi arsitektur dan security gates",
+      cost: "11.0k tokens", time: "36s", avatar: "claude", tools: ["github", "figma"],
+      children: [{
+        id: "bmad-developer", agent: "BMad Developer", model: "claude-haiku-5-5",
+        state: "done", task: "Slicing komponen UI dan menyatukan telemetri token usage",
+        cost: "7.8k tokens", time: "28s", avatar: "claude", tools: ["github", "stripe"],
+        children: [{
+          id: "bmad-qa", agent: "BMad QA Engineer", model: "claude-haiku-5-5",
+          state: "running", task: "Menjalankan skenario verifikasi e2e permission gate dan kanban stage",
+          cost: "5.0k tokens", time: "27s", avatar: "claude", tools: ["github"],
+        }],
+      }],
+    },
+  ],
+};
+
 /** Static demo matching the Agent Tree preview; no agents execute. */
 export const demoWorktreeRun: WorktreeNode = {
   id: "run-orchestrator",
