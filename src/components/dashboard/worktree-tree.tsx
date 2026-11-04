@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { ChatGptIcon, ClaudeIcon, FigmaIcon, GithubIcon, GoogleGeminiIcon, NotionIcon, SlackIcon, StripeIcon } from "@hugeicons/core-free-icons";
 import type { AgentTaskState } from "./agent-board-data";
@@ -159,7 +159,7 @@ function TreeNode({ node, parentId, depth, openIds, focusedId, onToggle, onFocus
       {hasChildren && (
         <div id={foldId} className="t-acc-panel worktree-children" aria-hidden={!open}>
           <div className="t-acc-panel-inner" inert={!open}>
-            <ul role="group" aria-label={`${node.agent} sub-agents`} className={depth === 0 ? "worktree-columns" : "worktree-branches"}>
+            <ul role="group" aria-label={`${node.agent} sub-agents`} className={depth === 0 ? "worktree-columns" : "worktree-branches"} style={depth === 0 ? { "--worktree-column-count": node.children!.length } as CSSProperties : undefined}>
               {node.children!.map(child => (
                 <TreeNode key={child.id} node={child} parentId={node.id} depth={depth + 1} openIds={openIds} focusedId={focusedId} onToggle={onToggle} onFocusNode={onFocusNode} />
               ))}
