@@ -1,7 +1,16 @@
 import type { AgentTaskState } from "./agent-board-data";
+import type { BMadAgentTreeNode } from "@/lib/bmad";
 
 export type WorktreeAvatar = "claude" | "gemini" | "openai";
 export type WorktreeTool = "slack" | "notion" | "github" | "figma" | "stripe" | "hubspot";
+
+export interface WorktreeTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  totalTokens: number;
+}
 
 export type WorktreeNode = {
   id: string;
@@ -9,12 +18,55 @@ export type WorktreeNode = {
   model: string;
   state: AgentTaskState;
   task: string;
-  cost: string;
+  cost?: string;
+  tokenUsage?: WorktreeTokenUsage;
   time: string;
   avatar: WorktreeAvatar;
   tools: WorktreeTool[];
+  artifacts?: string[];
   children?: WorktreeNode[];
 };
+
+export function formatTokens(num: number): string {
+  if (!num) return "0 tokens";
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M tokens`;
+  if (num >= 1_000) return `${(num / 1_000).toFixed(1)}k tokens`;
+  return `${num} tokens`;
+}
+
+export function bmadNodeToWorktreeNode(node: BMadAgentTreeNode): WorktreeNode {
+  let state: AgentTaskState = "running";
+  if (node.status === "completed") state = "done";
+  else if (node.status === "failed") state = "failed";
+  else if (node.status === "waiting_approval") state = "waiting";
+
+  const providerLower = (node.modelUsed?.provider || "").toLowerCase();
+  const modelIdLower = (node.modelUsed?.modelId || "").toLowerCase();
+
+  let avatar: WorktreeAvatar = "claude";
+  if (providerLower.includes("openai") || modelIdLower.includes("gpt")) avatar = "openai";
+  else if (providerLower.includes("gemini") || modelIdLower.includes("gemini")) avatar = "gemini";
+
+  const seconds = Math.round((node.durationMs || 0) / 1000);
+  const timeFormatted = seconds > 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
+
+  const validTools: WorktreeTool[] = ["slack", "notion", "github", "figma", "stripe", "hubspot"];
+  const tools = (node.tools || ["github"]).filter((t): t is WorktreeTool => validTools.includes(t as WorktreeTool));
+
+  return {
+    id: node.id,
+    agent: node.name,
+    model: node.modelUsed?.modelId || "BMad Agent",
+    state,
+    task: node.action || "No action recorded",
+    tokenUsage: node.tokenUsage,
+    time: timeFormatted,
+    avatar,
+    tools: tools.length > 0 ? tools : ["github"],
+    artifacts: node.artifacts || [],
+    children: node.children?.map(bmadNodeToWorktreeNode),
+  };
+}
 
 /** Static demo matching the Agent Tree preview; no agents execute. */
 export const demoWorktreeRun: WorktreeNode = {

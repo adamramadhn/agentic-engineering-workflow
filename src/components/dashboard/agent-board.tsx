@@ -98,7 +98,42 @@ export function AgentTaskCard({
               vertical padding on the 0fr grid item leaves a residual strip. */}
           <div className="px-3 pb-3">
             <p className="text-xs text-muted-foreground/80">{task.agent}</p>
-            <ol className="mt-1.5 grid list-none gap-1.5 text-[12.5px] leading-[19px]">
+
+            {task.rejectionReason && (
+              <div className="mt-2 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+                <span className="font-semibold">Catatan Penolakan: </span>
+                {task.rejectionReason}
+              </div>
+            )}
+
+            {task.contextFiles && task.contextFiles.length > 0 && (
+              <div className="mt-2 text-xs">
+                <span className="font-medium text-muted-foreground">Context files: </span>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {task.contextFiles.map((file, i) => (
+                    <span key={i} className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-mono text-muted-foreground" title={file.description}>
+                      {file.path}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {task.checklists && task.checklists.length > 0 && (
+              <div className="mt-2 text-xs">
+                <span className="font-medium text-muted-foreground">Checklists: </span>
+                <ul className="mt-1 grid gap-1">
+                  {task.checklists.map((item, i) => (
+                    <li key={i} className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                      <span className={cn("size-2 rounded-full", item.completed ? "bg-emerald-500" : "border border-muted-foreground/50")} />
+                      <span className={cn(item.completed && "line-through opacity-70")}>{item.title}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <ol className="mt-2 grid list-none gap-1.5 text-[12.5px] leading-[19px]">
               {task.steps.map((step, index) => (
                 <li key={index} className="relative flex items-start justify-between gap-2.5 ps-4">
                   {/* Rail runs bullet-center to bullet-center and stops at the last dot. */}

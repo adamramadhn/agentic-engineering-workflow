@@ -244,6 +244,106 @@ export function ensureSchema(): Promise<void> {
           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         );
         CREATE INDEX IF NOT EXISTS idx_wiki_audit_target_created ON wiki_audit(target, created_at DESC);
+
+        -- ---- Schema v5: BMad Monitor Integration (Kanban, Worktree, Backlog) -
+        -- 1. BMad Projects
+        CREATE TABLE IF NOT EXISTS bmad_projects (
+          id             TEXT PRIMARY KEY,
+          name           TEXT NOT NULL,
+          git_remote_url TEXT,
+          workspace_path TEXT,
+          owner_id       UUID REFERENCES users(id) ON DELETE SET NULL,
+          team_id        TEXT,
+          created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        -- 2. Context reference files reported by BMad skills
+        CREATE TABLE IF NOT EXISTS bmad_context_files (
+          id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          project_id      TEXT NOT NULL REFERENCES bmad_projects(id) ON DELETE CASCADE,
+          path            TEXT NOT NULL,
+          description     TEXT NOT NULL DEFAULT '',
+          file_size_bytes BIGINT NOT NULL DEFAULT 0,
+          last_modified   TIMESTAMPTZ NOT NULL DEFAULT now(),
+          created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_bmad_context_files_project ON bmad_context_files(project_id);
+
+        -- 3. Kanban Task Items (AffectUI Agent Inbox compatible)
+        CREATE TABLE IF NOT EXISTS bmad_tasks (
+          id               TEXT PRIMARY KEY,
+          project_id       TEXT NOT NULL REFERENCES bmad_projects(id) ON DELETE CASCADE,
+          title            TEXT NOT NULL,
+          description      TEXT NOT NULL DEFAULT '',
+          stage            TEXT NOT NULL DEFAULT 'ready_for_review',
+          priority         TEXT NOT NULL DEFAULT 'medium',
+          approval_status  TEXT NOT NULL DEFAULT 'pending',
+          rejection_reason TEXT,
+          assigned_agent   TEXT NOT NULL DEFAULT 'bmad-agent',
+          context_files    JSONB NOT NULL DEFAULT '[]'::jsonb,
+          checklists       JSONB NOT NULL DEFAULT '[]'::jsonb,
+          steps            JSONB NOT NULL DEFAULT '[]'::jsonb,
+          sources          INT NOT NULL DEFAULT 0,
+          tool_calls       INT NOT NULL DEFAULT 0,
+          duration         TEXT NOT NULL DEFAULT '0s',
+          created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_bmad_tasks_project_stage ON bmad_tasks(project_id, stage);
+
+        -- 4. Agent Tree Nodes (AffectUI Agent Tree compatible with Token Usage)
+        CREATE TABLE IF NOT EXISTS bmad_agent_nodes (
+          id           TEXT PRIMARY KEY,
+          project_id   TEXT NOT NULL REFERENCES bmad_projects(id) ON DELETE CASCADE,
+          task_id      TEXT REFERENCES bmad_tasks(id) ON DELETE SET NULL,
+          parent_id    TEXT REFERENCES bmad_agent_nodes(id) ON DELETE CASCADE,
+          name         TEXT NOT NULL,
+          role         TEXT NOT NULL DEFAULT 'orchestrator',
+          status       TEXT NOT NULL DEFAULT 'running',
+          action       TEXT NOT NULL DEFAULT '',
+          duration_ms  BIGINT NOT NULL DEFAULT 0,
+          token_usage  JSONB NOT NULL DEFAULT '{"inputTokens":0,"outputTokens":0,"totalTokens":0}'::jsonb,
+          model_used   JSONB NOT NULL DEFAULT '{"provider":"Anthropic","modelId":"claude-sonnet-5-5"}'::jsonb,
+          artifacts    JSONB NOT NULL DEFAULT '[]'::jsonb,
+          tools        JSONB NOT NULL DEFAULT '[]'::jsonb,
+          error_detail TEXT,
+          timestamp    TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_bmad_agent_nodes_project ON bmad_agent_nodes(project_id);
+        CREATE INDEX IF NOT EXISTS idx_bmad_agent_nodes_parent ON bmad_agent_nodes(parent_id);
+
+        -- 5. Backlog & Code Impact Analysis
+        CREATE TABLE IF NOT EXISTS bmad_backlogs (
+          id              TEXT PRIMARY KEY,
+          project_id      TEXT NOT NULL REFERENCES bmad_projects(id) ON DELETE CASCADE,
+          title           TEXT NOT NULL,
+          raw_description TEXT NOT NULL DEFAULT '',
+          source          TEXT NOT NULL DEFAULT 'web',
+          created_by      TEXT NOT NULL DEFAULT '',
+          status          TEXT NOT NULL DEFAULT 'draft',
+          impact_analysis JSONB,
+          created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_bmad_backlogs_project ON bmad_backlogs(project_id);
+
+        -- 6. Multi-Provider LLM Vault
+        CREATE TABLE IF NOT EXISTS bmad_llm_providers (
+          id             TEXT PRIMARY KEY,
+          name           TEXT NOT NULL,
+          provider_type  TEXT NOT NULL DEFAULT 'anthropic',
+          base_url       TEXT NOT NULL,
+          api_key        TEXT NOT NULL,
+          model_id       TEXT NOT NULL,
+          is_team_shared BOOLEAN NOT NULL DEFAULT false,
+          registered_by  TEXT NOT NULL DEFAULT '',
+          created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        -- 7. Seed default project if none exists
+        INSERT INTO bmad_projects (id, name, git_remote_url, workspace_path) VALUES
+          ('prj_default', 'Agentic Engineering Workflow', 'git@github.com:fatmuh/agentic-engineering-workflow.git', '/Volumes/DevWorkspace/Development/Projects/apps/agentic-engineering-workflow')
+        ON CONFLICT (id) DO NOTHING;
       `);
     })().catch((error) => {
       // Allow a later request to retry if bootstrap failed (e.g. DB was down)

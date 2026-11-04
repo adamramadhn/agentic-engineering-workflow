@@ -6,6 +6,16 @@ export interface AgentStep {
   time: string;
 }
 
+export interface TaskChecklist {
+  title: string;
+  completed: boolean;
+}
+
+export interface TaskContextFile {
+  path: string;
+  description?: string;
+}
+
 export interface AgentTask {
   id: string;
   title: string;
@@ -16,6 +26,55 @@ export interface AgentTask {
   toolCalls: number;
   agent: string;
   steps: AgentStep[];
+  stage?: string;
+  approvalStatus?: "pending" | "approved" | "rejected";
+  rejectionReason?: string | null;
+  checklists?: TaskChecklist[];
+  contextFiles?: TaskContextFile[];
+}
+
+export function bmadTaskToAgentTask(item: {
+  id: string;
+  title: string;
+  description: string;
+  stage: string;
+  approvalStatus: string;
+  assignedAgent: string;
+  rejectionReason?: string | null;
+  steps?: AgentStep[];
+  checklists?: TaskChecklist[];
+  contextFiles?: TaskContextFile[];
+  sources?: number;
+  toolCalls?: number;
+  duration?: string;
+}): AgentTask {
+  let state: AgentTaskState = "running";
+  if (item.stage === "completed") {
+    state = "done";
+  } else if (item.stage === "ready_for_review" && item.approvalStatus === "pending") {
+    state = "waiting";
+  } else if (item.approvalStatus === "rejected") {
+    state = "failed";
+  } else if (item.stage === "in_progress" || item.stage === "analysis") {
+    state = "running";
+  }
+
+  return {
+    id: item.id,
+    title: item.title,
+    description: item.description,
+    state,
+    stage: item.stage,
+    approvalStatus: item.approvalStatus as "pending" | "approved" | "rejected",
+    rejectionReason: item.rejectionReason,
+    duration: item.duration || "0s",
+    sources: item.sources || 0,
+    toolCalls: item.toolCalls || 0,
+    agent: item.assignedAgent || "BMad Agent",
+    steps: item.steps && item.steps.length > 0 ? item.steps : [{ text: "Task created by BMad agent", time: "recently" }],
+    checklists: item.checklists || [],
+    contextFiles: item.contextFiles || [],
+  };
 }
 
 export const agentColumns: { id: AgentColumnId; label: string }[] = [

@@ -4,7 +4,7 @@ import { useRef, useState, type KeyboardEvent } from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { ChatGptIcon, ClaudeIcon, FigmaIcon, GithubIcon, GoogleGeminiIcon, NotionIcon, SlackIcon, StripeIcon } from "@hugeicons/core-free-icons";
 import type { AgentTaskState } from "./agent-board-data";
-import type { WorktreeAvatar, WorktreeNode, WorktreeTool } from "./worktree-tree-data";
+import { formatTokens, type WorktreeAvatar, type WorktreeNode, type WorktreeTool } from "./worktree-tree-data";
 import { AlertCircle, Check, ChevronDown, Clock } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
@@ -105,7 +105,16 @@ function WorktreeCard({ node, open, onToggle }: {
         {" "}{node.task}
       </p>
       <div className="worktree-meta mt-auto flex min-h-4 items-center gap-1 text-[0.6875rem] tabular-nums">
-        <span className="text-foreground">{node.cost}</span>
+        {node.tokenUsage ? (
+          <span
+            className="font-medium text-foreground"
+            title={`Total Tokens: ${node.tokenUsage.totalTokens.toLocaleString()} (Input: ${node.tokenUsage.inputTokens.toLocaleString()}, Output: ${node.tokenUsage.outputTokens.toLocaleString()}${node.tokenUsage.cacheReadTokens ? `, Cache Read: ${node.tokenUsage.cacheReadTokens.toLocaleString()}` : ""}${node.tokenUsage.cacheWriteTokens ? `, Cache Write: ${node.tokenUsage.cacheWriteTokens.toLocaleString()}` : ""})`}
+          >
+            {formatTokens(node.tokenUsage.totalTokens)}
+          </span>
+        ) : (
+          <span className="text-foreground">{node.cost}</span>
+        )}
         <span className="worktree-model">· {node.time}</span>
         {childCount > 0 && (
           <button
