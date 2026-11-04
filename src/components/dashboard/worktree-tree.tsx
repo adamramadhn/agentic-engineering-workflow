@@ -159,7 +159,7 @@ function TreeNode({ node, parentId, depth, openIds, focusedId, onToggle, onFocus
       {hasChildren && (
         <div id={foldId} className="t-acc-panel worktree-children" aria-hidden={!open}>
           <div className="t-acc-panel-inner" inert={!open}>
-            <ul role="group" aria-label={`${node.agent} sub-agents`} className={depth === 0 ? "worktree-columns" : "worktree-branches"} style={depth === 0 ? { "--worktree-column-count": node.children!.length } as CSSProperties : undefined}>
+            <ul role="group" aria-label={`${node.agent} sub-agents`} className={depth === 0 ? "worktree-columns" : "worktree-branches"}>
               {node.children!.map(child => (
                 <TreeNode key={child.id} node={child} parentId={node.id} depth={depth + 1} openIds={openIds} focusedId={focusedId} onToggle={onToggle} onFocusNode={onFocusNode} />
               ))}
@@ -210,7 +210,7 @@ export function WorktreeTree({ run }: { run: WorktreeNode }) {
 
   return (
     <div className="worktree-canvas">
-      <ul ref={treeRef} role="tree" aria-label="Agent run" onKeyDown={onKeyDown} className="worktree-tree">
+      <ul ref={treeRef} role="tree" aria-label="Agent run" onKeyDown={onKeyDown} className="worktree-tree" style={{ "--worktree-column-count": Math.max(1, run.children?.length ?? 0) } as CSSProperties}>
         <TreeNode node={run} parentId={null} depth={0} openIds={openIds} focusedId={focusedId} onToggle={toggle} onFocusNode={setFocusedId} />
       </ul>
     </div>
