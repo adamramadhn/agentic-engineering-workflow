@@ -38,6 +38,11 @@ export const pool = new Pool({
  *   wiki_audit    audit trail for every wiki/storage mutation (mirrors role_audit)
  *   app_settings  key → JSONB value store; holds the S3 storage config (the
  *                 requester's explicit "not .env" decision — see the plan)
+ *
+ * v6 adds OAuth 2.0 PKCE for the BMad Monitor MCP CLI:
+ *   oauth_codes           single-use authorization codes (PKCE S256, 60s TTL)
+ *   oauth_refresh_tokens  rotatable MCP refresh material, sha256(jti) — separate
+ *                         from web refresh_tokens (different revoke semantics)
  */
 let schemaReady: Promise<void> | null = null;
 
@@ -344,6 +349,46 @@ export function ensureSchema(): Promise<void> {
         INSERT INTO bmad_projects (id, name, git_remote_url, workspace_path) VALUES
           ('prj_default', 'Agentic Engineering Workflow', 'git@github.com:fatmuh/agentic-engineering-workflow.git', '/Volumes/DevWorkspace/Development/Projects/apps/agentic-engineering-workflow')
         ON CONFLICT (id) DO NOTHING;
+      `);
+
+      // ---- Schema v6: OAuth 2.0 PKCE for the BMad Monitor MCP CLI ----------
+      // Append-only and idempotent like every block above: CREATE TABLE IF NOT
+      // EXISTS / CREATE INDEX IF NOT EXISTS, so a v5 database upgrades in place
+      // and a fresh one arrives at the same shape.
+      //
+      // oauth_refresh_tokens mirrors the web refresh_tokens pattern (sha256(jti),
+      // rotatable, revocable) but stays a separate table: the MCP population
+      // (CLI devices) and its revoke reasons must never touch the web session
+      // path this feature is forbidden to change.
+      await pool.query(`
+        -- 1. Single-use authorization codes issued by /oauth/authorize.
+        --    Consumed exactly once by POST /api/oauth/token via an atomic
+        --    UPDATE ... WHERE consumed_at IS NULL ... RETURNING.
+        CREATE TABLE IF NOT EXISTS oauth_codes (
+          id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          code                TEXT NOT NULL UNIQUE,
+          code_challenge      TEXT NOT NULL,
+          code_challenge_method TEXT NOT NULL DEFAULT 'S256',
+          redirect_uri        TEXT NOT NULL,
+          client_id           TEXT NOT NULL DEFAULT 'bmad-mcp-cli',
+          user_id             UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          expires_at          TIMESTAMPTZ NOT NULL,
+          consumed_at         TIMESTAMPTZ,
+          created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_oauth_codes_code ON oauth_codes(code);
+
+        -- 2. MCP refresh material, sha256(jti), rotating on every use.
+        CREATE TABLE IF NOT EXISTS oauth_refresh_tokens (
+          id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          token_hash     TEXT NOT NULL UNIQUE,
+          expires_at     TIMESTAMPTZ NOT NULL,
+          revoked_at     TIMESTAMPTZ,
+          revoked_reason TEXT,
+          created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_oauth_refresh_tokens_user_id ON oauth_refresh_tokens(user_id);
       `);
     })().catch((error) => {
       // Allow a later request to retry if bootstrap failed (e.g. DB was down)

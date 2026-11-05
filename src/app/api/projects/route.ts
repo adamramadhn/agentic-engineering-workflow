@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { ensureInitialBMadData } from "@/lib/bmad";
+import { guardBmadApi } from "@/lib/oauth";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await guardBmadApi(req);
+  if (denied) return denied;
   try {
     await ensureInitialBMadData("prj_default");
     const res = await query<{
@@ -33,6 +36,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const denied = await guardBmadApi(req);
+  if (denied) return denied;
   try {
     const body = await req.json();
     const { name, gitRemoteUrl, workspacePath } = body;

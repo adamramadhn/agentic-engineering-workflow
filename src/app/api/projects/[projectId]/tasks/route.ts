@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { getBMadTasks } from "@/lib/bmad";
+import { guardBmadApi } from "@/lib/oauth";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const denied = await guardBmadApi(req);
+  if (denied) return denied;
   try {
     const { projectId } = await params;
     const tasks = await getBMadTasks(projectId);

@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import type { BMadTaskItem } from "@/lib/bmad";
+import { guardBmadApi } from "@/lib/oauth";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ projectId: string; taskId: string }> }
 ) {
+  const denied = await guardBmadApi(req);
+  if (denied) return denied;
   try {
     const { projectId, taskId } = await params;
     const res = await query<{
@@ -65,6 +68,8 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ projectId: string; taskId: string }> }
 ) {
+  const denied = await guardBmadApi(req);
+  if (denied) return denied;
   try {
     const { projectId, taskId } = await params;
     const body = await req.json();

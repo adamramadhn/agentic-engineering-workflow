@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { guardBmadApi } from "@/lib/oauth";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await guardBmadApi(req);
+  if (denied) return denied;
   try {
     const res = await query<{
       id: string;

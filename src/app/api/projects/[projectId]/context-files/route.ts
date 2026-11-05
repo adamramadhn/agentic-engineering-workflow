@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import type { BMadContextFileRef } from "@/lib/bmad";
+import { guardBmadApi } from "@/lib/oauth";
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const denied = await guardBmadApi(req);
+  if (denied) return denied;
   try {
     const { projectId } = await params;
     const body = await req.json();

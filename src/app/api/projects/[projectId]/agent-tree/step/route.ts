@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import type { BMadAgentTreeNode } from "@/lib/bmad";
+import { guardBmadApi } from "@/lib/oauth";
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const denied = await guardBmadApi(req);
+  if (denied) return denied;
   try {
     const { projectId } = await params;
     const node: Partial<BMadAgentTreeNode> = await req.json();
