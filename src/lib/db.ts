@@ -93,8 +93,12 @@ async function migrateLegacySchema(): Promise<void> {
  * lower() is applied up front, not last: `.GIT` must be stripped by the same
  * rule as `.git`, and a trailing lower() would only run after that strip had
  * already missed it.
+ *
+ * Exported because `resolveProject` in ./projects compares against this exact
+ * expression rather than re-deriving the key in JavaScript — one contract, so
+ * the lookup and the index can never disagree.
  */
-const NORMALIZED_REMOTE_SQL = `regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(lower(btrim(git_remote_url)), '/+$', ''), '\\.git$', ''), '^[A-Za-z][A-Za-z0-9+.-]*://', ''), '^[^/@]*@', ''), '^([^/:]+):[0-9]+(/.*)$', '\\1\\2'), '^([^/:]+):(.*)$', '\\1/\\2')`;
+export const NORMALIZED_REMOTE_SQL = `regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(lower(btrim(git_remote_url)), '/+$', ''), '\\.git$', ''), '^[A-Za-z][A-Za-z0-9+.-]*://', ''), '^[^/@]*@', ''), '^([^/:]+):[0-9]+(/.*)$', '\\1\\2'), '^([^/:]+):(.*)$', '\\1/\\2')`;
 
 /**
  * SQL expression for the comparable form of a workspace path, used by
@@ -104,8 +108,11 @@ const NORMALIZED_REMOTE_SQL = `regexp_replace(regexp_replace(regexp_replace(rege
  * `/a/b` and `/a/b/` both insert and then resolve to two different projects,
  * which is exactly the race the index exists to lose. Root stays `/` and is
  * not stripped to the empty string, matching rule 3's "preserve / for root".
+ *
+ * Exported for the same reason as NORMALIZED_REMOTE_SQL above: the resolver
+ * must compare with these expressions, not a parallel TS implementation.
  */
-const NORMALIZED_WORKSPACE_SQL = `CASE WHEN btrim(workspace_path) ~ '^/+$' THEN '/'
+export const NORMALIZED_WORKSPACE_SQL = `CASE WHEN btrim(workspace_path) ~ '^/+$' THEN '/'
        ELSE regexp_replace(btrim(workspace_path), '/+$', '') END`;
 
 /**

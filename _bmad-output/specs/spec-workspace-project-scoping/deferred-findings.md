@@ -27,3 +27,19 @@ Berkas ini menampung temuan nyata yang **bukan** milik story mana pun di `storie
 **Dampak:** semua jaminan story 1 (composite key, cascade, idempoten, penolakan duplikat) hanya diverifikasi secara manual. Regresi tidak akan tertangkap `npm run verify`.
 
 **Cara menutup:** tambahkan spec ke `tests/matrix/` (harness sudah menyediakan scratch DB dan `getPool()`): dua project dengan `TASK-101` masing-masing, delete task memverifikasi cascade, dua bentuk remote ditolak unique index, dan pembacaan `pg_constraint` untuk memastikan bentuk PK/FK.
+
+## D-4 — Case-folding path tidak ditangani pada filesystem case-insensitive
+
+**Bukti:** `normalizeWorkspacePath` sengaja tidak me-resolve symlink dan tidak menormalkan huruf. Di macOS (case-insensitive, dan repo ini sendiri berada di `/Volumes/...`), `/Users/X/proj` dan `/users/x/proj` menunjuk direktori yang sama tetapi menghasilkan dua kunci berbeda, sehingga workspace yang sama bisa menjadi dua project.
+
+**Dampak:** hanya pada filesystem case-insensitive (macOS/Windows) dengan path berbeda kapitalisasi. Di Linux tidak terjadi.
+
+**Cara menutup:** putuskan apakah path harus di-case-fold saat dinormalkan, atau diterima sebagai batasan yang didokumentasikan. Catat pilihannya di `identity-mapping.md` sebelum story 4 mulai memakai path sebagai identitas.
+
+## D-5 — Token/kredensial tertanam di URL remote dapat bocor
+
+**Bukti:** `NORMALIZED_REMOTE_SQL` membuang userinfo, sehingga `https://user:token@host/repo` dan `https://host/repo` menormalkan ke kunci yang sama. Pemilik baris pertama menyimpan URL mentahnya, dan siapa pun yang membaca baris `bmad_projects` melihat token itu.
+
+**Dampak:** rahasia tersimpan di kolom `git_remote_url` yang ditampilkan di dashboard dan dikembalikan API.
+
+**Cara menutup:** putuskan kebijakan — tolak remote yang mengandung kredensial, atau redaksi saat disimpan/dikembalikan. Ini keputusan produk, bukan sekadar perbaikan teknis.

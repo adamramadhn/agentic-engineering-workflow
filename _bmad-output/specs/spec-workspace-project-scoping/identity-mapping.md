@@ -68,15 +68,28 @@ Dua sesi CLI yang dijalankan bersamaan dapat sama-sama tidak menemukan project y
 
 ```sql
 CREATE UNIQUE INDEX IF NOT EXISTS uq_bmad_projects_remote
-  ON bmad_projects (lower(regexp_replace(git_remote_url, '\.git$', '')))
+  ON bmad_projects (
+    lower(regexp_replace(regexp_replace(regexp_replace(regexp_replace(
+      regexp_replace(regexp_replace(btrim(git_remote_url), '/+$', ''), '\.git$', ''),
+      '^[A-Za-z][A-Za-z0-9+.-]*://', ''), '^[^/@]*@', ''),
+      '^([^/:]+):[0-9]+(/.*)$', '\1\2'), '^([^/:]+):(.*)$', '\1/\2'))
   WHERE git_remote_url IS NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_bmad_projects_workspace
-  ON bmad_projects (workspace_path)
+  ON bmad_projects ((
+    CASE WHEN btrim(workspace_path) ~ '^/+$' THEN '/'
+         ELSE regexp_replace(btrim(workspace_path), '/+$', '') END
+  ))
   WHERE git_remote_url IS NULL AND workspace_path IS NOT NULL;
 ```
 
+Bentuk di atas adalah yang **benar-benar terpasang** setelah story 1; versi sebelumnya di dokumen ini (hanya `lower()` + strip `.git`, dan kolom `workspace_path` mentah) sudah tidak berlaku. Index workspace memakai ekstra sepasang kurung karena `CREATE INDEX` menolak `CASE` tanpa kurung.
+
 Index kedua hanya mencakup project tanpa remote, sesuai aturan 2. Kedua index memakai bentuk normalisasi yang sama dengan aturan di atas; bila implementasi JS menormalkan lebih agresif daripada SQL, samakan keduanya di satu fungsi bersama agar keduanya tidak menyimpang.
+
+Satu pengecualian yang disengaja: normalisasi path di resolver menambahkan ekspansi `~` dan pembuatan path absolut, yang tidak bisa dilakukan SQL. Karena itu **path disimpan dalam bentuk sudah ternormalisasi**, sehingga index hanya melihat string absolut dan tidak perlu mengekspansi apa pun. `POST /api/projects` wajib melakukan hal yang sama; kalau tidak, baris yang dibuat lewat jalur create tidak akan pernah cocok dengan hasil resolusi.
+
+Remote wajib ASCII. PostgreSQL `lower()` dan JavaScript `toLowerCase()` berbeda pada karakter non-ASCII (`İ`, sigma Yunani), sehingga kunci TS tidak akan pernah sama dengan kunci SQL dan setiap resolusi akan membuat project duplikat. Remote yang mengandung non-ASCII ditolak, bukan dinormalkan diam-diam.
 
 ## State di CLI
 
