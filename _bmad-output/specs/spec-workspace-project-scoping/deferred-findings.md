@@ -43,3 +43,11 @@ Berkas ini menampung temuan nyata yang **bukan** milik story mana pun di `storie
 **Dampak:** rahasia tersimpan di kolom `git_remote_url` yang ditampilkan di dashboard dan dikembalikan API.
 
 **Cara menutup:** putuskan kebijakan — tolak remote yang mengandung kredensial, atau redaksi saat disimpan/dikembalikan. Ini keputusan produk, bukan sekadar perbaikan teknis.
+
+## D-6 — Board menampilkan task demo palsu saat seed gagal
+
+**Bukti:** `src/components/dashboard/agent-board-view.tsx:27-28,45` menginisialisasi state dari `demoAgentTasks`/`demoWorktreeRun` dan hanya menimpanya bila API mengembalikan array tidak kosong. Sejak story 3, seed tidak lagi berjalan di jalur baca, jadi bila seed saat boot gagal (DB tidak terjangkau, misalnya), board menampilkan data demo karangan sebagai seolah-olah data live, tanpa pembeda apa pun.
+
+**Dampak:** pengguna melihat task yang tidak ada di database. Ini kelas kebingungan yang lebih buruk daripada board kosong.
+
+**Cara menutup:** frontmatter/state board harus membedakan "kosong" dari "belum dimuat", dan menampilkan board kosong dengan pesan jelas alih-alih data demo. Dikerjakan bersama story 4.

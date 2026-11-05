@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { ensureInitialBMadData } from "@/lib/bmad";
 import { guardBmadApi } from "@/lib/oauth";
 import {
   ProjectIdentityError,
@@ -13,7 +12,8 @@ export async function GET(req: Request) {
   const denied = await guardBmadApi(req);
   if (denied) return denied;
   try {
-    await ensureInitialBMadData("prj_default");
+    // Read-only on purpose: the demo seed is a startup concern
+    // (`src/instrumentation.ts`), not a side effect of listing projects.
     const res = await query<{
       id: string;
       name: string;

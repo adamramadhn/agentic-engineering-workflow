@@ -90,14 +90,54 @@ export interface BMadProject {
 }
 
 /**
- * Fetch or seed initial BMad data if empty
+ * The demo project that ships with the app. It is the ONLY project the demo
+ * seed below ever targets — every other project starts empty on purpose.
  */
-export async function ensureInitialBMadData(projectId: string = "prj_default") {
+export const DEMO_PROJECT_ID = "prj_default";
+
+/**
+ * Seed the demo board for `DEMO_PROJECT_ID` if that project is still empty.
+ *
+ * Idempotent, and deliberately NOT on any read path: `GET /api/projects` must
+ * be a read, and reading a brand-new project's board must not plant demo tasks
+ * in it. The single caller is the server-startup hook
+ * (`src/instrumentation.ts`); nothing else should invoke it.
+ *
+ * Pass `tasks` on a later attempt to skip the task-count probe and go straight
+ * to the node half — see `seedWithNodes` in the startup hook, which uses this
+ * to finish a seed that died between the two inserts.
+ */
+export async function seedDefaultProjectData(
+  tasks: "probe" | "present" = "probe"
+): Promise<void> {
+  await ensureInitialBMadData(DEMO_PROJECT_ID, { tasks });
+}
+
+/**
+ * Seed the demo tasks/nodes of `projectId` if that project has none.
+ *
+ * `projectId` has no default: a caller that forgets it must fail to compile
+ * rather than silently read and write another project's board.
+ *
+ * The two inserts are separate statements on purpose — they use different
+ * parameter lists and the node insert is a `SELECT ... FROM (VALUES ...)` — so
+ * a failure between them leaves a half-seeded project. `tasks: "present"`
+ * re-runs only the node half, which is how the startup hook repairs that state;
+ * without it the task-count probe would see rows and skip forever, leaving
+ * `getBMadAgentTree` returning null indefinitely.
+ */
+export async function ensureInitialBMadData(
+  projectId: string,
+  options: { tasks?: "probe" | "present" } = {}
+) {
   const existingTasks = await query<{ count: string }>(
     `SELECT count(*) FROM bmad_tasks WHERE project_id = $1`,
     [projectId]
   );
-  if (parseInt(existingTasks.rows[0]?.count ?? "0", 10) === 0) {
+  if (
+    options.tasks !== "present" &&
+    parseInt(existingTasks.rows[0]?.count ?? "0", 10) === 0
+  ) {
     // Seed initial tasks compatible with both AgentBoard and BMad MCP
     await query(
       `INSERT INTO bmad_tasks
@@ -298,10 +338,9 @@ export async function ensureInitialBMadData(projectId: string = "prj_default") {
 }
 
 /**
- * Get all tasks for a project
+ * Get all tasks for a project. Pure read — seeding happens only at startup.
  */
-export async function getBMadTasks(projectId: string = "prj_default"): Promise<BMadTaskItem[]> {
-  await ensureInitialBMadData(projectId);
+export async function getBMadTasks(projectId: string): Promise<BMadTaskItem[]> {
   const res = await query<{
     id: string;
     project_id: string;
@@ -347,10 +386,10 @@ export async function getBMadTasks(projectId: string = "prj_default"): Promise<B
 }
 
 /**
- * Get full hierarchical agent tree for a project
+ * Get full hierarchical agent tree for a project. Pure read — seeding happens
+ * only at startup.
  */
-export async function getBMadAgentTree(projectId: string = "prj_default"): Promise<BMadAgentTreeNode | null> {
-  await ensureInitialBMadData(projectId);
+export async function getBMadAgentTree(projectId: string): Promise<BMadAgentTreeNode | null> {
   const res = await query<{
     id: string;
     project_id: string;
