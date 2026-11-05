@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import Link from "next/link";
@@ -15,6 +14,7 @@ import {
 import { useSidebar } from "@/components/ui/sidebar";
 import { UserProfileMenu } from "./user-profile-menu";
 import { WorkspaceSwitcher } from "./workspace-switcher";
+import { useActiveProject, workspaceSubtitle } from "./project-context";
 import { usePermission } from "./permission-provider";
 import { pageViewPermission } from "@/lib/permissions";
 import { ADMIN_PAGES, WORKSPACE_PAGES, WATCHED_COMPANIES } from "./navigation";
@@ -53,17 +53,26 @@ export function AppSidebar({
   const isCollapsed = !open;
   const { can } = usePermission();
 
-  const [currentWorkspace, setCurrentWorkspace] = useState("Onyx");
+  // The workspace list and the active workspace both come from the shared
+  // project context — the same state the Agent Board reads its requests from,
+  // so choosing here is what the board shows.
+  const { projects, projectId, project, setProjectId } = useActiveProject();
 
-  const workspaces = [
-    { id: "onyx", name: "Onyx", plan: "Enterprise", active: currentWorkspace === "Onyx" },
-    { id: "acme", name: "Acme Production", plan: "Pro Plan", active: currentWorkspace === "Acme Production" },
-    { id: "byteforge", name: "Byteforge Staging", plan: "Developer", active: currentWorkspace === "Byteforge Staging" },
-  ];
+  const workspaces = projects.map(item => ({
+    id: item.id,
+    name: item.name,
+    plan: workspaceSubtitle(item),
+  }));
 
-  const handleSwitchWorkspace = (name: string) => {
-    setCurrentWorkspace(name);
-    toast.success(`Switched workspace to ${name}`);
+  // `value` is the project id: the active row is marked from the same state
+  // the board fetches from, not from a name match that could collide.
+  const currentWorkspaceId = project?.id ?? "";
+
+  const handleSwitchWorkspace = (id: string) => {
+    const next = projects.find(item => item.id === id);
+    if (!next || next.id === projectId) return;
+    setProjectId(next.id);
+    toast.success(`Switched workspace to ${next.name}`);
   };
 
   // Permission-filtered nav: mobile and desktop maps both render this list, so
@@ -92,7 +101,7 @@ export function AppSidebar({
         <div className="min-h-0 w-full flex-1 overflow-y-auto scrollbar-none">
           {/* Workspace Brand Row with Close Button */}
           <div className="flex h-8 w-full items-center justify-between px-1">
-            <WorkspaceSwitcher workspaces={workspaces} value={currentWorkspace} onChange={handleSwitchWorkspace} onCreate={() => toast.info("Workspace creation is not available in this demo")} />
+            <WorkspaceSwitcher workspaces={workspaces} value={currentWorkspaceId} onChange={handleSwitchWorkspace} onCreate={() => toast.info("Workspace creation is not available in this demo")} />
 
             <button
               type="button"
@@ -222,7 +231,7 @@ export function AppSidebar({
               isCollapsed ? "justify-center px-0" : "justify-between px-1"
             }`}
           >
-            <WorkspaceSwitcher workspaces={workspaces} value={currentWorkspace} onChange={handleSwitchWorkspace} onCreate={() => toast.info("Workspace creation is not available in this demo")} collapsed={isCollapsed} />
+            <WorkspaceSwitcher workspaces={workspaces} value={currentWorkspaceId} onChange={handleSwitchWorkspace} onCreate={() => toast.info("Workspace creation is not available in this demo")} collapsed={isCollapsed} />
 
             {/* Collapse Trigger Button on Desktop */}
             {!isCollapsed && (

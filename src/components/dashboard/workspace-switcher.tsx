@@ -12,26 +12,28 @@ import { BrightdeskMark } from "./icons";
 
 interface WorkspaceSwitcherProps {
   workspaces: { id: string; name: string; plan: string }[];
+  /** Active workspace's project id (names are labels and need not be unique). */
   value: string;
-  onChange: (name: string) => void;
+  onChange: (id: string) => void;
   onCreate: () => void;
   collapsed?: boolean;
 }
 
 export function WorkspaceSwitcher({ workspaces, value, onChange, onCreate, collapsed = false }: WorkspaceSwitcherProps) {
   const [open, setOpen] = useState(false);
+  const activeName = workspaces.find(workspace => workspace.id === value)?.name ?? "";
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <style href="workspace-switcher-clean" precedence="default">{css}</style>
-      <DropdownMenuTrigger render={<Button variant="ghost" size="md" className="workspace-switcher-trigger" aria-label={`Switch workspace, current ${value}`} icon={<BrightdeskMark />} iconRight={collapsed ? undefined : <ChevronDown />} />}>
-        {collapsed ? null : value}
+      <DropdownMenuTrigger render={<Button variant="ghost" size="md" className="workspace-switcher-trigger" aria-label={activeName ? `Switch workspace, current ${activeName}` : "Switch workspace"} icon={<BrightdeskMark />} iconRight={collapsed ? undefined : <ChevronDown />} />}>
+        {collapsed ? null : activeName}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" sideOffset={4} className="workspace-switcher-menu">
         <DropdownMenuGroup>
           <DropdownMenuLabel>Switch workspace</DropdownMenuLabel>
           <DropdownMenuRadioGroup value={value} onValueChange={onChange}>
             {workspaces.map(workspace => (
-              <DropdownMenuRadioItem key={workspace.id} value={workspace.name} closeOnClick onClick={() => setOpen(false)}>
+              <DropdownMenuRadioItem key={workspace.id} value={workspace.id} closeOnClick onClick={() => setOpen(false)}>
                 <span className="workspace-switcher-mark" aria-hidden="true">{workspace.name.slice(0, 1)}</span>
                 <span className="workspace-switcher-details"><span>{workspace.name}</span><span className="workspace-switcher-plan">{workspace.plan}</span></span>
               </DropdownMenuRadioItem>

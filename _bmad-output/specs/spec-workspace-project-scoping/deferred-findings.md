@@ -51,3 +51,27 @@ Berkas ini menampung temuan nyata yang **bukan** milik story mana pun di `storie
 **Dampak:** pengguna melihat task yang tidak ada di database. Ini kelas kebingungan yang lebih buruk daripada board kosong.
 
 **Cara menutup:** frontmatter/state board harus membedakan "kosong" dari "belum dimuat", dan menampilkan board kosong dengan pesan jelas alih-alih data demo. Dikerjakan bersama story 4.
+
+## D-7 — Staleness per-project, bukan per-request, dan loadState digabung
+
+**Bukti:** `agent-board-view.tsx` memakai penjaga `projectIdRef` yang hanya membandingkan id project. Poll 5 detik yang mulai sebelum reload pasca-mutasi dapat selesai setelahnya dan menimpa data yang lebih baru. Selain itu `loadState` tunggal dipakai untuk dua request terpisah (`tasks` dan `agent-tree`), sehingga kegagalan `agent-tree` saja menandai seluruh board gagal.
+
+**Dampak:** data bisa mundur sesaat setelah approve/reject, dan board yang sehat bisa dilaporkan rusak hanya karena pohon agen gagal dimuat.
+
+**Cara menutup:** tambahkan token monotonik per request (pola `latestLoadRef` di `permission-provider.tsx`) dan pisahkan `loadState` menjadi dua: board dan tree.
+
+## D-8 — Persistensi workspace tidak sinkron antar-tab dan tidak bisa dipulihkan tanpa reload
+
+**Bukti:** `project-context.tsx` mengekspos `reload()` yang tidak pernah dipanggil, dan tidak ada listener event `storage`. Dua tab terbuka akan saling menimpa pilihan; bila pemuatan daftar project gagal, dashboard tidak punya jalan pulih selain reload halaman penuh.
+
+**Dampak:** pengguna yang membuka dua tab melihat workspace berbeda, dan kegagalan sesaat memaksa reload manual.
+
+**Cara menutup:** dengarkan event `storage` untuk menyinkronkan pilihan, dan hubungkan `reload()` ke tombol Refresh di board atau ke keadaan error sidebar.
+
+## D-9 — Sisa data demo dan detail UI pada Workspace Switcher
+
+**Bukti:** `demoAgentTasks` di `agent-board-data.ts:123-198` tidak lagi direferensikan siapa pun (dead code, tidak tertangkap lint karena berupa export). Skenario "Pricing page · 3 branches" di tab Worktree masih merender `demoWorktreeRun` yang di-hardcode untuk setiap project. Switcher tidak punya keadaan memuat/kosong, tidak mengumumkan pergantian, dan `workspaceSubtitle` menaruh host git di slot yang CSS-nya masih digayakan sebagai tier plan. Toast pergantian berbahasa Inggris sementara string lain berbahasa Indonesia.
+
+**Dampak:** sumber data palsu yang siap dipakai ulang oleh penulis berikutnya, dan ketidakkonsistenan bahasa/desain pada elemen yang terlihat.
+
+**Cara menutup:** hapus `demoAgentTasks`; pindahkan `demoWorktreeRun` ke fixtures yang jelas tidak bisa diimpor kode aplikasi; tambahkan keadaan memuat/kosong pada switcher dan pengumuman pergantian; samakan bahasa toast.
