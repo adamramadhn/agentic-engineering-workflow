@@ -145,7 +145,7 @@ export async function ensureInitialBMadData(projectId: string = "prj_default") {
           $10::jsonb,
           23, 31, '12m 10s'
         )
-       ON CONFLICT (id) DO NOTHING`,
+       ON CONFLICT (project_id, id) DO NOTHING`,
       [
         projectId,
         JSON.stringify([
@@ -188,72 +188,89 @@ export async function ensureInitialBMadData(projectId: string = "prj_default") {
     [projectId]
   );
   if (parseInt(existingNodes.rows[0]?.count ?? "0", 10) === 0) {
-    // Seed initial agent tree hierarchy
+    // Seed initial agent tree hierarchy.
+    //
+    // task_id is now a composite FK `(project_id, task_id) → bmad_tasks`, so a
+    // node may only point at a task of its OWN project. The demo tasks above
+    // are seeded only when the project had none, so a project that already had
+    // some (e.g. a freshly created project that received TASK-101 through
+    // tasks/batch) may not own the rest — the CASE narrows task_id to NULL for
+    // exactly those. Without it the whole insert aborts on the FK, which
+    // surfaces as a 500 on the project's first task-list read. Under v5's
+    // global key this same insert silently attached nodes to another project's
+    // tasks, which is the bug this migration removes.
     await query(
       `INSERT INTO bmad_agent_nodes
         (id, project_id, task_id, parent_id, name, role, status, action, duration_ms, token_usage, model_used, artifacts, tools)
-       VALUES
+       SELECT v.id, v.project_id,
+              CASE WHEN EXISTS (SELECT 1 FROM bmad_tasks t
+                                 WHERE t.project_id = v.project_id AND t.id = v.task_id)
+                   THEN v.task_id END,
+              v.parent_id, v.name, v.role, v.status, v.action, v.duration_ms,
+              v.token_usage, v.model_used, v.artifacts, v.tools
+         FROM (VALUES
         (
-          'node-root-orchestrator',
-          $1,
-          'TASK-101',
-          NULL,
-          'BMad Master Orchestrator',
-          'orchestrator',
-          'running',
-          'Mengkoordinasikan analisis arsitektur dan eksekusi task sprint',
-          84000,
+          'node-root-orchestrator'::text,
+          $1::text,
+          'TASK-101'::text,
+          NULL::text,
+          'BMad Master Orchestrator'::text,
+          'orchestrator'::text,
+          'running'::text,
+          'Mengkoordinasikan analisis arsitektur dan eksekusi task sprint'::text,
+          84000::bigint,
           $2::jsonb,
           $3::jsonb,
           $4::jsonb,
           $5::jsonb
         ),
         (
-          'node-bmad-analyst-01',
-          $1,
-          'TASK-102',
-          'node-root-orchestrator',
-          'BMad Analyst',
-          'analyst',
-          'running',
-          'Menganalisis file context docs/PRD.md dan mengidentifikasi dependensi domain',
-          42000,
+          'node-bmad-analyst-01'::text,
+          $1::text,
+          'TASK-102'::text,
+          'node-root-orchestrator'::text,
+          'BMad Analyst'::text,
+          'analyst'::text,
+          'running'::text,
+          'Menganalisis file context docs/PRD.md dan mengidentifikasi dependensi domain'::text,
+          42000::bigint,
           $6::jsonb,
           $7::jsonb,
           $8::jsonb,
           $9::jsonb
         ),
         (
-          'node-bmad-architect-01',
-          $1,
-          'TASK-101',
-          'node-root-orchestrator',
-          'BMad Architect',
-          'architect',
-          'waiting_approval',
-          'Menyiapkan rancangan solusi arsitektur dan security gates',
-          36000,
+          'node-bmad-architect-01'::text,
+          $1::text,
+          'TASK-101'::text,
+          'node-root-orchestrator'::text,
+          'BMad Architect'::text,
+          'architect'::text,
+          'waiting_approval'::text,
+          'Menyiapkan rancangan solusi arsitektur dan security gates'::text,
+          36000::bigint,
           $10::jsonb,
           $11::jsonb,
           $12::jsonb,
           $13::jsonb
         ),
         (
-          'node-bmad-dev-01',
-          $1,
-          'TASK-103',
-          'node-bmad-architect-01',
-          'BMad Developer',
-          'developer',
-          'completed',
-          'Slicing komponen UI dan menyatukan telemetri token usage',
-          28000,
+          'node-bmad-dev-01'::text,
+          $1::text,
+          'TASK-103'::text,
+          'node-bmad-architect-01'::text,
+          'BMad Developer'::text,
+          'developer'::text,
+          'completed'::text,
+          'Slicing komponen UI dan menyatukan telemetri token usage'::text,
+          28000::bigint,
           $14::jsonb,
           $15::jsonb,
           $16::jsonb,
           $17::jsonb
         )
-       ON CONFLICT (id) DO NOTHING`,
+        ) AS v(id, project_id, task_id, parent_id, name, role, status, action, duration_ms, token_usage, model_used, artifacts, tools)
+       ON CONFLICT (project_id, id) DO NOTHING`,
       [
         projectId,
         JSON.stringify({ inputTokens: 18450, outputTokens: 3200, cacheReadTokens: 12000, cacheWriteTokens: 2400, totalTokens: 21650 }),

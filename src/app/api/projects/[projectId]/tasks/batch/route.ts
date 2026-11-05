@@ -52,7 +52,7 @@ export async function POST(
           (id, project_id, title, description, stage, priority, approval_status, assigned_agent, context_files, checklists, steps, duration)
          VALUES
           ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12)
-         ON CONFLICT (id) DO UPDATE SET
+         ON CONFLICT (project_id, id) DO UPDATE SET
           title = EXCLUDED.title,
           description = EXCLUDED.description,
           stage = EXCLUDED.stage,

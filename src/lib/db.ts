@@ -43,6 +43,22 @@ export const pool = new Pool({
  *   oauth_codes           single-use authorization codes (PKCE S256, 60s TTL)
  *   oauth_refresh_tokens  rotatable MCP refresh material, sha256(jti) — separate
  *                         from web refresh_tokens (different revoke semantics)
+ *
+ * v7 scopes the BMad board to a project (CAP-5):
+ *   bmad_tasks / bmad_agent_nodes / bmad_backlogs move from a global
+ *   `id TEXT PRIMARY KEY` to `PRIMARY KEY (project_id, id)`, so `TASK-101`
+ *   means a different row per project instead of overwriting another project's
+ *   task. The child FKs (task_id, parent_id) become composite and must be
+ *   CASCADE — the previous `task_id ... ON DELETE SET NULL` is impossible on a
+ *   composite key, since SET NULL would null the NOT NULL project_id that is
+ *   part of the primary key. bmad_projects gains the two partial unique indexes
+ *   that make workspace → project resolution race-safe (identity-mapping.md).
+ *
+ *   Unlike the blocks above this one runs DDL, so it is an explicit
+ *   transaction on ONE checked-out client (pool.query would rotate
+ *   connections across BEGIN and the rest) and every step is guarded by
+ *   pg_constraint state — constraint names are read from the catalog, never
+ *   assumed, and re-running it is a no-op.
  */
 let schemaReady: Promise<void> | null = null;
 
@@ -64,6 +80,346 @@ async function migrateLegacySchema(): Promise<void> {
     console.warn("[db] legacy TEXT-id users table detected — dropping users (old data is not migrated)");
     await pool.query(`DROP TABLE IF EXISTS users CASCADE`);
   }
+}
+
+/**
+ * SQL expression for the comparable form of a git remote, shared by
+ * `uq_bmad_projects_remote` and the JavaScript resolver in story 2. Mirrors
+ * identity-mapping.md's normalisation steps 1-5: trim and strip a trailing "/",
+ * strip a ".git" suffix, drop scheme + userinfo, turn `host:owner/repo` into
+ * `host/owner/repo`, and lowercase. SQL and TS must agree or the index stops
+ * guarding the rule the resolver applies.
+ *
+ * lower() is applied up front, not last: `.GIT` must be stripped by the same
+ * rule as `.git`, and a trailing lower() would only run after that strip had
+ * already missed it.
+ */
+const NORMALIZED_REMOTE_SQL = `regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(lower(btrim(git_remote_url)), '/+$', ''), '\\.git$', ''), '^[A-Za-z][A-Za-z0-9+.-]*://', ''), '^[^/@]*@', ''), '^([^/:]+):[0-9]+(/.*)$', '\\1\\2'), '^([^/:]+):(.*)$', '\\1/\\2')`;
+
+/**
+ * SQL expression for the comparable form of a workspace path, used by
+ * `uq_bmad_projects_workspace`. identity-mapping.md rule 2 compares normalised
+ * paths; `~`-expansion and absolute resolution happen in the resolver, but the
+ * trailing-slash strip must be here too — indexing the raw column would let
+ * `/a/b` and `/a/b/` both insert and then resolve to two different projects,
+ * which is exactly the race the index exists to lose. Root stays `/` and is
+ * not stripped to the empty string, matching rule 3's "preserve / for root".
+ */
+const NORMALIZED_WORKSPACE_SQL = `CASE WHEN btrim(workspace_path) ~ '^/+$' THEN '/'
+       ELSE regexp_replace(btrim(workspace_path), '/+$', '') END`;
+
+/**
+ * `CREATE INDEX` parses an index expression as a bare `a_expr`, and a `CASE`
+ * is an `a_expr` only when parenthesised — hence the extra parens around the
+ * workspace form at the index site. A plain function call needs none.
+ */
+const NORMALIZED_WORKSPACE_INDEX_EXPR = `(${NORMALIZED_WORKSPACE_SQL})`;
+
+/**
+ * Transaction-scoped advisory lock serialising the whole v7 migration.
+ *
+ * BEGIN gives atomicity but not exclusion: two processes booting together would
+ * both read the pre-v7 catalog under READ COMMITTED, both decide to swap the
+ * key, and the loser's DROP CONSTRAINT would fail. The key is an arbitrary
+ * fixed int4, only its stability matters. Transaction-scoped, so it releases on
+ * COMMIT/ROLLBACK without a matching unlock.
+ */
+const SCHEMA_V7_ADVISORY_LOCK = 730_200_001;
+
+/** Primary keys this migration installs, in the order their child FKs must be handled. */
+const PROJECT_SCOPED_TABLES = ["bmad_tasks", "bmad_agent_nodes", "bmad_backlogs"] as const;
+
+/** Child foreign keys that must be dropped before the referenced PK can change. */
+const COMPOSITE_CHILD_FKS = [
+  { table: "bmad_agent_nodes", column: "task_id" },
+  { table: "bmad_agent_nodes", column: "parent_id" },
+] as const;
+
+/**
+ * Resolve a column's attribute number from the catalog. Never hardcode these:
+ * in the v5 layout `id` is column 1 and `project_id` is column 2, the reverse of
+ * what the DDL order suggests at a glance.
+ */
+async function attnumOf(
+  client: { query: typeof pool.query },
+  table: string,
+  column: string
+): Promise<number | undefined> {
+  const res = await client.query<{ attnum: number }>(
+    `SELECT attnum FROM pg_attribute
+      WHERE attrelid = $1::regclass AND attname = $2 AND NOT attisdropped`,
+    [table, column]
+  );
+  return res.rows[0]?.attnum;
+}
+
+/**
+ * True when `table` already has a foreign key on (`column`, project_id) in the
+ * composite shape v7 installs. Matching is by `conkey` MEMBERSHIP, not equality
+ * of the whole array: once v7 has run the key is `(project_id, task_id)`, and an
+ * equality test against `(task_id)` alone would read "absent", drop it again and
+ * re-add a duplicate — the exact restart failure this guard exists to prevent.
+ */
+async function hasCompositeForeignKey(
+  client: { query: typeof pool.query },
+  table: string,
+  column: string
+): Promise<boolean> {
+  const columnAttnum = await attnumOf(client, table, column);
+  const projectAttnum = await attnumOf(client, table, "project_id");
+  if (!columnAttnum || !projectAttnum) return false;
+  const res = await client.query(
+    `SELECT 1 FROM pg_constraint c
+      WHERE c.conrelid = $1::regclass AND c.contype = 'f'
+        AND array_length(c.conkey, 1) = 2
+        AND $2 = ANY (c.conkey)
+        AND $3 = ANY (c.conkey)
+      LIMIT 1`,
+    [table, columnAttnum, projectAttnum]
+  );
+  return res.rows.length > 0;
+}
+
+/**
+ * True when `table` already has a SINGLE-column foreign key on `column`.
+ * Step 1 drops exactly those: a v6 key is `(task_id)`, while a v7 key is
+ * `(project_id, task_id)` and must be left alone on a restart.
+ */
+async function hasSingleColumnForeignKey(
+  client: { query: typeof pool.query },
+  table: string,
+  column: string
+): Promise<boolean> {
+  const columnAttnum = await attnumOf(client, table, column);
+  if (!columnAttnum) return false;
+  const res = await client.query(
+    `SELECT 1 FROM pg_constraint c
+      WHERE c.conrelid = $1::regclass AND c.contype = 'f'
+        AND c.conkey = ARRAY[$2::smallint]
+      LIMIT 1`,
+    [table, columnAttnum]
+  );
+  return res.rows.length > 0;
+}
+
+/**
+ * Schema v7 — composite `(project_id, id)` primary keys.
+ *
+ * Every step reads the catalog first, so a database already on v7 does no DDL
+ * and a database half-way through cannot double-add. All of it runs in one
+ * transaction on one client: a failure leaves the old keys intact rather than
+ * a table without a primary key.
+ *
+ * The rewrite is cheap only because existing rows are unique globally, which
+ * makes the new composite key valid without a data scan for conflicts; the
+ * pre-flight check below still refuses to proceed if some row pairs up in a
+ * way the old key allowed but the new one does not.
+ */
+async function migrateProjectScopedKeys(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    // Serialise the migration across processes before reading any catalog
+    // state. Everything below assumes the catalog it read is still true when
+    // it acts on it; without this lock a concurrent boot can invalidate that
+    // between the SELECT and the ALTER.
+    await client.query("SELECT pg_advisory_xact_lock($1)", [SCHEMA_V7_ADVISORY_LOCK]);
+
+    // ---- 1. Drop the child FKs that reference a changing key --------------
+    // Read the real constraint name from pg_constraint rather than assuming
+    // `<table>_<column>_fkey`: the name is auto-generated and a hand-created
+    // database may carry a different one. Only SINGLE-column keys are dropped —
+    // a composite one is already v7's and must survive a restart untouched.
+    for (const { table, column } of COMPOSITE_CHILD_FKS) {
+      if (!(await hasSingleColumnForeignKey(client, table, column))) continue;
+      const existing = await client.query<{ conname: string }>(
+        `SELECT conname FROM pg_constraint
+          WHERE conrelid = $1::regclass AND contype = 'f'
+            AND conkey = ARRAY[$2::smallint]`,
+        [table, await attnumOf(client, table, column)]
+      );
+      for (const { conname } of existing.rows) {
+        await client.query(`ALTER TABLE ${table} DROP CONSTRAINT ${quoteIdent(conname)}`);
+      }
+    }
+
+    // ---- 2. Guard the new composite keys against existing data ------------
+    // Runs before the key swap (not before all DDL — step 1 has already
+    // dropped the child FKs); the transaction is what makes that safe: a throw
+    // here rolls the whole thing back and leaves the v5 keys in place.
+    //
+    // A row is only a problem when this node's OWN project lacks the id it
+    // points at. A node whose task_id matches its own project's task is valid
+    // even when another project reuses that id — that reuse is precisely what
+    // v7 exists to allow, so flagging it would brick startup on normal data.
+    // The trailing EXISTS keeps the check cheap: no such row can exist under
+    // the old global key unless a row was edited outside the app.
+    const conflicts = await client.query<{ kind: string; rows: string }>(`
+      SELECT 'duplicate key' AS kind, count(*)::text AS rows FROM (
+        SELECT project_id, id FROM bmad_tasks GROUP BY 1, 2 HAVING count(*) > 1
+        UNION ALL
+        SELECT project_id, id FROM bmad_agent_nodes GROUP BY 1, 2 HAVING count(*) > 1
+        UNION ALL
+        SELECT project_id, id FROM bmad_backlogs GROUP BY 1, 2 HAVING count(*) > 1
+      ) dup
+      UNION ALL
+      SELECT 'node.task_id not in own project', count(*)::text FROM bmad_agent_nodes n
+       WHERE n.task_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM bmad_tasks o
+                          WHERE o.project_id = n.project_id AND o.id = n.task_id)
+         AND EXISTS (SELECT 1 FROM bmad_tasks t WHERE t.id = n.task_id)
+      UNION ALL
+      SELECT 'node.parent_id not in own project', count(*)::text FROM bmad_agent_nodes n
+       WHERE n.parent_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM bmad_agent_nodes o
+                          WHERE o.project_id = n.project_id AND o.id = n.parent_id)
+         AND EXISTS (SELECT 1 FROM bmad_agent_nodes p WHERE p.id = n.parent_id)
+    `);
+    const blocking = conflicts.rows.filter((row) => Number(row.rows) > 0);
+    if (blocking.length > 0) {
+      throw new Error(
+        `[db] schema v7 cannot run: ${blocking
+          .map((row) => `${row.kind} (${row.rows} rows)`)
+          .join(", ")}. Resolve these rows, then restart.`
+      );
+    }
+
+    // ---- 3. Swap each global PK for the composite one ---------------------
+    for (const table of PROJECT_SCOPED_TABLES) {
+      const pkey = await client.query<{ conname: string; cols: number[] }>(
+        `SELECT conname, conkey::int[] AS cols FROM pg_constraint
+          WHERE conrelid = $1::regclass AND contype = 'p'`,
+        [table]
+      );
+      const current = pkey.rows[0];
+      // Already `(project_id, id)` → nothing to do. Compared by attribute
+      // NUMBERS, the same way the FK guards are, so a renamed or re-ordered
+      // catalog entry cannot be mistaken for the v5 shape.
+      const projectAttnum = await attnumOf(client, table, "project_id");
+      const idAttnum = await attnumOf(client, table, "id");
+      const isComposite =
+        current?.cols.length === 2 &&
+        !!projectAttnum && !!idAttnum &&
+        current.cols.includes(projectAttnum) &&
+        current.cols.includes(idAttnum);
+      if (isComposite) continue;
+      if (current) {
+        await client.query(`ALTER TABLE ${table} DROP CONSTRAINT ${quoteIdent(current.conname)}`);
+      }
+      await client.query(`ALTER TABLE ${table} ADD PRIMARY KEY (project_id, id)`);
+    }
+
+    // ---- 4. Re-add the child FKs as composite, CASCADE --------------------
+    // Matched by column-membership rather than by name, so a restart on an
+    // already-migrated database adds nothing and does not collide with the
+    // constraint it created on the previous boot.
+    if (!(await hasCompositeForeignKey(client, "bmad_agent_nodes", "task_id"))) {
+      await client.query(`
+        ALTER TABLE bmad_agent_nodes ADD CONSTRAINT bmad_agent_nodes_task_id_fkey
+          FOREIGN KEY (project_id, task_id)
+          REFERENCES bmad_tasks (project_id, id) ON DELETE CASCADE
+      `);
+    }
+    if (!(await hasCompositeForeignKey(client, "bmad_agent_nodes", "parent_id"))) {
+      await client.query(`
+        ALTER TABLE bmad_agent_nodes ADD CONSTRAINT bmad_agent_nodes_parent_id_fkey
+          FOREIGN KEY (project_id, parent_id)
+          REFERENCES bmad_agent_nodes (project_id, id) ON DELETE CASCADE
+      `);
+    }
+
+    // ---- 5. Access-pattern indexes ---------------------------------------
+    // `(project_id, stage)` from v5 stays: the board filters by stage inside
+    // one project. The two added here serve the ordered task list and the
+    // tree assembly, both now scoped by project.
+    //
+    // idx_bmad_agent_nodes_project is now a prefix of (project_id, parent_id)
+    // and idx_bmad_agent_nodes_parent is covered by the PK's trailing `id`
+    // lookup, so both are redundant. Left in place deliberately: they cost only
+    // write amplification on a small table, and dropping them is outside this
+    // story's scope.
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_bmad_tasks_project_updated
+        ON bmad_tasks (project_id, updated_at DESC)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_bmad_agent_nodes_project_parent
+        ON bmad_agent_nodes (project_id, parent_id)
+    `);
+
+    // ---- 6. Identity indexes on bmad_projects ----------------------------
+    // Checked BEFORE the CREATE UNIQUE INDEX statements: a single duplicate
+    // would abort the index build, roll back the whole transaction and leave
+    // the app replaying a failing bootstrap with no UI path out. Throwing a
+    // named, actionable error here keeps the failure diagnosable.
+    //
+    // Reported values are the truncated live inputs, not the normalised forms,
+    // so they can be found with a plain WHERE. The grouped expressions are
+    // repeated rather than projected: GROUP BY can only reference the input
+    // columns of the row being indexed.
+    const remoteDupes = await client.query<{ values: string; n: string }>(`
+      SELECT string_agg(DISTINCT substring(v FROM 1 FOR 60), ', ') AS values, count(*)::text AS n
+        FROM (SELECT git_remote_url AS v, ${NORMALIZED_REMOTE_SQL} AS k
+                FROM bmad_projects WHERE git_remote_url IS NOT NULL) s
+       GROUP BY k HAVING count(*) > 1
+    `);
+    if (remoteDupes.rows.length > 0) {
+      throw new Error(
+        `[db] schema v7 cannot run: ${remoteDupes.rows.length} duplicated git remote(s) — ${remoteDupes.rows
+          .map((row) => `${row.values} (${row.n} projects)`)
+          .join("; ")}. Keep one project per remote, then restart.`
+      );
+    }
+
+    const workspaceDupes = await client.query<{ values: string; n: string }>(`
+      SELECT string_agg(DISTINCT substring(v FROM 1 FOR 60), ', ') AS values, count(*)::text AS n
+        FROM (SELECT workspace_path AS v, ${NORMALIZED_WORKSPACE_SQL} AS k
+                FROM bmad_projects
+               WHERE git_remote_url IS NULL AND workspace_path IS NOT NULL) s
+       GROUP BY k HAVING count(*) > 1
+    `);
+    if (workspaceDupes.rows.length > 0) {
+      throw new Error(
+        `[db] schema v7 cannot run: ${workspaceDupes.rows.length} duplicated workspace path(s) — ${workspaceDupes.rows
+          .map((row) => `${row.values} (${row.n} projects)`)
+          .join("; ")}. Keep one project per path, then restart.`
+      );
+    }
+
+    // Partial, so many projects may share a NULL remote / NULL path, and the
+    // path index only covers remote-less projects — a path that happens to
+    // match a remote-backed project must not claim it (identity-mapping.md).
+    //
+    // The workspace index is dropped and rebuilt rather than created
+    // conditionally: an earlier cut of v7 shipped it over the RAW column, and
+    // `CREATE INDEX IF NOT EXISTS` matches by name only, so a database that ran
+    // that cut would keep the weak index forever with no error. Dropping first
+    // is idempotent and makes the shape self-correcting. The remote index needs
+    // no such treatment — its only shipped definition has always been this one.
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_bmad_projects_remote
+        ON bmad_projects (${NORMALIZED_REMOTE_SQL})
+        WHERE git_remote_url IS NOT NULL
+    `);
+    await client.query(`DROP INDEX IF EXISTS uq_bmad_projects_workspace`);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_bmad_projects_workspace
+        ON bmad_projects (${NORMALIZED_WORKSPACE_INDEX_EXPR})
+        WHERE git_remote_url IS NULL AND workspace_path IS NOT NULL
+    `);
+
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** Quote an identifier read from the catalog for inline DDL. */
+function quoteIdent(name: string): string {
+  return `"${name.replaceAll('"', '""')}"`;
 }
 
 export function ensureSchema(): Promise<void> {
@@ -390,6 +746,12 @@ export function ensureSchema(): Promise<void> {
         );
         CREATE INDEX IF NOT EXISTS idx_oauth_refresh_tokens_user_id ON oauth_refresh_tokens(user_id);
       `);
+
+      // ---- Schema v7: project-scoped composite keys (BMad board) -----------
+      // Separate from the guarded blocks above because it is DDL against
+      // existing tables, not CREATE ... IF NOT EXISTS: see
+      // migrateProjectScopedKeys for the per-step catalog guards.
+      await migrateProjectScopedKeys();
     })().catch((error) => {
       // Allow a later request to retry if bootstrap failed (e.g. DB was down)
       schemaReady = null;

@@ -27,12 +27,41 @@ export async function POST(
     const tools = node.tools || ["github"];
     const errorDetail = node.errorDetail || null;
 
+    // Task and parent are composite FKs scoped to this project, so a reference
+    // the caller sends is only writable if it exists HERE. Checking up front
+    // turns what would be a raw FK violation (a 500 carrying the Postgres
+    // message) into a 400 that names the offending field.
+    if (taskId) {
+      const task = await query(
+        `SELECT 1 FROM bmad_tasks WHERE project_id = $1 AND id = $2`,
+        [projectId, taskId]
+      );
+      if (task.rows.length === 0) {
+        return NextResponse.json(
+          { error: `Task ${taskId} does not exist in project ${projectId}` },
+          { status: 400 }
+        );
+      }
+    }
+    if (parentId) {
+      const parent = await query(
+        `SELECT 1 FROM bmad_agent_nodes WHERE project_id = $1 AND id = $2`,
+        [projectId, parentId]
+      );
+      if (parent.rows.length === 0) {
+        return NextResponse.json(
+          { error: `Parent node ${parentId} does not exist in project ${projectId}` },
+          { status: 400 }
+        );
+      }
+    }
+
     const res = await query(
       `INSERT INTO bmad_agent_nodes
         (id, project_id, task_id, parent_id, name, role, status, action, duration_ms, token_usage, model_used, artifacts, tools, error_detail, timestamp)
        VALUES
         ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14, now())
-       ON CONFLICT (id) DO UPDATE SET
+       ON CONFLICT (project_id, id) DO UPDATE SET
         task_id = COALESCE(EXCLUDED.task_id, bmad_agent_nodes.task_id),
         parent_id = COALESCE(EXCLUDED.parent_id, bmad_agent_nodes.parent_id),
         name = EXCLUDED.name,
