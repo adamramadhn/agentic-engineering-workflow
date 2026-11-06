@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:matrix": "vitest run --config vitest.matrix.config.ts",
+    "test:multi-instance": "node scripts/verify-multi-instance.mjs",
     "test:e2e": "playwright test",
     "verify": "next build && (npm run lint || echo \"[verify] lint reported issues — non-gating\") && npm test && npm run test:matrix && npm run test:e2e"
   },
