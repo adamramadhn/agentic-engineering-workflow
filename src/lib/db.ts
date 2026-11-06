@@ -59,6 +59,12 @@ export const pool = new Pool({
  *   connections across BEGIN and the rest) and every step is guarded by
  *   pg_constraint state — constraint names are read from the catalog, never
  *   assumed, and re-running it is a no-op.
+ *
+ * v8 completes the backlog flow the MCP CLI already models:
+ *   bmad_backlogs gains promoted_to_task_id / promoted_by / promoted_at plus a
+ *   composite FK to bmad_tasks (project_id, id), so "promoted ⇒ the task
+ *   exists" is a database invariant and the server-side promote stays
+ *   idempotent. Like v7 this is catalog-guarded DDL on one locked client.
  */
 let schemaReady: Promise<void> | null = null;
 
@@ -429,6 +435,63 @@ function quoteIdent(name: string): string {
   return `"${name.replaceAll('"', '""')}"`;
 }
 
+/**
+ * Transaction-scoped advisory lock serialising the v8 migration, for the same
+ * reason as v7's: BEGIN alone does not stop two processes booting together
+ * from both reading "constraint absent" and both trying to add it. Distinct
+ * key from v7's so the two blocks never wait on each other.
+ */
+const SCHEMA_V8_ADVISORY_LOCK = 730_200_002;
+
+/**
+ * Schema v8 — backlog promotion columns.
+ *
+ * `bmad_backlogs` gets the three promotion columns the Go MCP client already
+ * models (`promotedToTaskId` / `promotedBy` / `promotedAt` in models.go) and a
+ * composite FK to `bmad_tasks (project_id, id)`. Without them the four
+ * `awm_backlog_*` tools have nowhere to record what a backlog became, and
+ * nothing stops a promoted backlog from pointing at a deleted task.
+ *
+ * The FK is deliberately ON DELETE NO ACTION (the default): deleting a
+ * promoted task is rejected — "promoted ⇒ task exists" is an invariant, not a
+ * suggestion. Deleting the whole PROJECT still works, because both tables
+ * cascade from `bmad_projects` and Postgres checks NO ACTION only after the
+ * cascade has removed the referencing rows too.
+ *
+ * Idempotent exactly like v7: columns arrive via ADD COLUMN IF NOT EXISTS, the
+ * FK is guarded from the catalog by hasCompositeForeignKey, and it all runs on
+ * one client under the advisory lock so a restart or a concurrent boot adds
+ * nothing.
+ */
+async function migrateBacklogPromotion(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock($1)", [SCHEMA_V8_ADVISORY_LOCK]);
+
+    await client.query(`
+      ALTER TABLE bmad_backlogs
+        ADD COLUMN IF NOT EXISTS promoted_to_task_id TEXT,
+        ADD COLUMN IF NOT EXISTS promoted_by TEXT,
+        ADD COLUMN IF NOT EXISTS promoted_at TIMESTAMPTZ
+    `);
+    if (!(await hasCompositeForeignKey(client, "bmad_backlogs", "promoted_to_task_id"))) {
+      await client.query(`
+        ALTER TABLE bmad_backlogs ADD CONSTRAINT bmad_backlogs_promoted_to_task_id_fkey
+          FOREIGN KEY (project_id, promoted_to_task_id)
+          REFERENCES bmad_tasks (project_id, id)
+      `);
+    }
+
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export function ensureSchema(): Promise<void> {
   if (!schemaReady) {
     schemaReady = (async () => {
@@ -759,6 +822,12 @@ export function ensureSchema(): Promise<void> {
       // existing tables, not CREATE ... IF NOT EXISTS: see
       // migrateProjectScopedKeys for the per-step catalog guards.
       await migrateProjectScopedKeys();
+
+      // ---- Schema v8: backlog promotion columns (BMad backlog flow) --------
+      // Must run after v7: the FK references the composite
+      // bmad_tasks (project_id, id) key v7 installs. Catalog-guarded steps in
+      // migrateBacklogPromotion.
+      await migrateBacklogPromotion();
     })().catch((error) => {
       // Allow a later request to retry if bootstrap failed (e.g. DB was down)
       schemaReady = null;
