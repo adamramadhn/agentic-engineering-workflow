@@ -38,8 +38,10 @@ import {
 import type { BMadProject } from "./bmad";
 import {
   ProjectIdentityError,
+  assertRemoteHasNoCredentials,
   normalizeGitRemote,
   normalizeWorkspacePath,
+  redactRemoteCredentials,
 } from "./project-identity";
 
 /**
@@ -136,7 +138,15 @@ export function toProjectResponse(row: ProjectRow): BMadProject {
   return {
     id: row.id,
     name: row.name,
-    gitRemoteUrl: row.git_remote_url,
+    // Filtered in the RESPONSE, never in the column (D-5): a row written by an
+    // older release may still hold `https://user:token@host/repo`, and boot is
+    // forbidden to rewrite it. Rewriting the column instead would make the
+    // stored remote stop matching the identity the row was created with; the
+    // response filter removes the secret while leaving the row intact.
+    gitRemoteUrl:
+      row.git_remote_url === null
+        ? null
+        : redactRemoteCredentials(row.git_remote_url),
     workspacePath: row.workspace_path,
     ownerId: row.owner_id,
     teamId: row.team_id,
@@ -179,15 +189,21 @@ export interface NormalizedProjectIdentity extends IdentityKeys {
    *  SQL strips scheme/userinfo/port itself, the path's SQL only strips a
    *  trailing slash, so the path must already be normalised when stored. */
   gitRemoteUrl: string | null;
-  /** Stored `workspace_path`: ALREADY normalised (`~` expanded, absolute, no
-   *  trailing slash) — see the note above. */
+  /** Stored `workspace_path`: ALREADY normalised (`~` expanded, absolute,
+   *  case-folded, no trailing slash) — see the note above. */
   workspacePath: string | null;
 }
 
 /**
  * Turn a request's optional identity fields into stored values + match keys.
  * Throws {@link ProjectIdentityError} for an identity that can never be
- * matched (non-ASCII remote, relative path).
+ * matched (non-ASCII remote, relative path) and for a remote that
+ * carries credentials.
+ *
+ * The credential check deliberately runs on the RAW string, before
+ * `normalizeGitRemote`: that normaliser strips userinfo, so a check on its
+ * output could never see the token (D-5). A bare username (`ssh://git@host/x`,
+ * `git@host:x`) is not a secret and is still accepted.
  *
  * Both normalisers treat `""` as absent; anything that normalises to an empty
  * string becomes `null` here so the identity indexes' empty slots stay empty.
@@ -200,6 +216,8 @@ export function normalizeProjectIdentity(input: {
     typeof input.gitRemoteUrl === "string" ? input.gitRemoteUrl : "";
   const workspace =
     typeof input.workspacePath === "string" ? input.workspacePath : "";
+  // Before anything else: normalisation would erase the evidence.
+  assertRemoteHasNoCredentials(remote);
   const remoteKey = remote.trim() === "" ? "" : normalizeGitRemote(remote);
   const workspaceKey =
     workspace.trim() === "" ? "" : normalizeWorkspacePath(workspace);
@@ -216,6 +234,14 @@ export function normalizeProjectIdentity(input: {
 /**
  * Rule 1 then rule 2, inside the caller's transaction. Uses the index
  * expressions so this lookup and `uq_bmad_projects_*` cannot diverge.
+ *
+ * Rule 2 needs ONLY the folded key (D-4 transition). The fold is applied to the
+ * STORED value, so a row written before D-4 (`/Users/X/Proj`) folds to the same
+ * key the request produces — one query reaches old and new rows alike. There is
+ * deliberately no second, unfolded comparison: it could only ever match rows
+ * this one already matched, and the round-trip was dead weight. What stays
+ * true is the read-only half of the contract: nothing here writes, so an old
+ * row is never rewritten and no second project is inserted for it.
  */
 async function findProject(
   client: PoolClient,
@@ -290,7 +316,13 @@ export async function resolveProject(
 
   await ensureSchema();
 
-  const { gitRemoteUrl, workspacePath, ...keys } = identity;
+  // `keys` is the match set; the INSERT below takes only the two stored
+  // columns, so neither is passed on by spreading `identity`.
+  const { gitRemoteUrl, workspacePath } = identity;
+  const keys: IdentityKeys = {
+    remoteKey: identity.remoteKey,
+    workspaceKey: identity.workspaceKey,
+  };
 
   for (let attempt = 0; attempt < RESOLVE_ATTEMPTS; attempt++) {
     // A fresh client per attempt: after a 23505 the previous transaction is

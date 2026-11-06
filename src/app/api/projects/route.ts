@@ -6,6 +6,7 @@ import {
   newProjectId,
   normalizeProjectIdentity,
   toProjectConflict,
+  toProjectResponse,
 } from "@/lib/projects";
 
 export async function GET(req: Request) {
@@ -24,15 +25,9 @@ export async function GET(req: Request) {
       created_at: Date;
     }>(`SELECT * FROM bmad_projects ORDER BY created_at DESC`);
 
-    const projects = res.rows.map(row => ({
-      id: row.id,
-      name: row.name,
-      gitRemoteUrl: row.git_remote_url,
-      workspacePath: row.workspace_path,
-      ownerId: row.owner_id,
-      teamId: row.team_id,
-      createdAt: row.created_at.toISOString(),
-    }));
+    // The shared mapper, so the userinfo filter (D-5) and every other field
+    // shape live in one place rather than once per endpoint.
+    const projects = res.rows.map(toProjectResponse);
 
     return NextResponse.json(projects);
   } catch (err: unknown) {
@@ -90,19 +85,7 @@ export async function POST(req: Request) {
       [newProjectId(), name, identity.gitRemoteUrl, identity.workspacePath]
     );
 
-    const row = res.rows[0];
-    return NextResponse.json(
-      {
-        id: row.id,
-        name: row.name,
-        gitRemoteUrl: row.git_remote_url,
-        workspacePath: row.workspace_path,
-        ownerId: row.owner_id,
-        teamId: row.team_id,
-        createdAt: row.created_at.toISOString(),
-      },
-      { status: 201 }
-    );
+    return NextResponse.json(toProjectResponse(res.rows[0]), { status: 201 });
   } catch (err: unknown) {
     // An identity the normaliser refuses (non-ASCII remote, relative path) is
     // the caller's mistake, same as on the resolve path.

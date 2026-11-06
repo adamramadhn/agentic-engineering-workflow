@@ -65,6 +65,13 @@ export const pool = new Pool({
  *   composite FK to bmad_tasks (project_id, id), so "promoted ⇒ the task
  *   exists" is a database invariant and the server-side promote stays
  *   idempotent. Like v7 this is catalog-guarded DDL on one locked client.
+ *
+ * v9 folds workspace identity (D-4):
+ *   bmad_projects.workspace_path is lowercased in place and
+ *   uq_bmad_projects_workspace rebuilt over the folded expression, so
+ *   `/Users/X/proj` and `/users/x/proj` are one key. Two rows that collapse
+ *   into one key abort the boot with a message naming both projects — merging
+ *   is never automatic. Same locked-client shape as v7/v8.
  */
 let schemaReady: Promise<void> | null = null;
 
@@ -115,10 +122,34 @@ export const NORMALIZED_REMOTE_SQL = `regexp_replace(regexp_replace(regexp_repla
  * which is exactly the race the index exists to lose. Root stays `/` and is
  * not stripped to the empty string, matching rule 3's "preserve / for root".
  *
+ * CASE-FOLDED (D-4), with `translate` rather than `lower`. `lower()` folds the
+ * whole Unicode range in a locale-dependent way, and JavaScript `toLowerCase()`
+ * does not agree with it on `İ` or the Greek final sigma — a key that cannot
+ * equal its own SQL form would duplicate the project on every resolve. Both
+ * halves therefore fold exactly the ASCII letters and leave every other byte
+ * untouched, so they agree on every possible input. Case-insensitivity for
+ * non-ASCII letters is the accepted cost; ASCII paths — every real workspace
+ * path — fold completely.
+ *
+ * Order mirrors `normalizeWorkspacePath`: btrim, strip trailing "/", then fold.
+ *
  * Exported for the same reason as NORMALIZED_REMOTE_SQL above: the resolver
  * must compare with these expressions, not a parallel TS implementation.
  */
 export const NORMALIZED_WORKSPACE_SQL = `CASE WHEN btrim(workspace_path) ~ '^/+$' THEN '/'
+       ELSE translate(regexp_replace(btrim(workspace_path), '/+$', ''),
+                      'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') END`;
+
+/**
+ * The PRE-D-4 value of `NORMALIZED_WORKSPACE_SQL` — same trimming and
+ * trailing-slash rule, no case fold.
+ *
+ * Kept only because v7's migration block must keep installing and checking the
+ * index shape it shipped with (see `NORMALIZED_WORKSPACE_V7_INDEX_EXPR`); the
+ * resolver does not use it. A pre-D-4 row is found by the folded expression
+ * alone, which folds the STORED value.
+ */
+export const NORMALIZED_WORKSPACE_LEGACY_SQL = `CASE WHEN btrim(workspace_path) ~ '^/+$' THEN '/'
        ELSE regexp_replace(btrim(workspace_path), '/+$', '') END`;
 
 /**
@@ -127,6 +158,49 @@ export const NORMALIZED_WORKSPACE_SQL = `CASE WHEN btrim(workspace_path) ~ '^/+$
  * workspace form at the index site. A plain function call needs none.
  */
 const NORMALIZED_WORKSPACE_INDEX_EXPR = `(${NORMALIZED_WORKSPACE_SQL})`;
+
+/**
+ * The v7 index expression, frozen: the same shape `uq_bmad_projects_workspace`
+ * had before v9 added the case fold.
+ *
+ * v7 must keep installing and checking THE SHAPE IT SHIPPED WITH. Folding it
+ * here would make v7's duplicate pre-check fire on the very rows v9 exists to
+ * report, with a message that names paths instead of projects — and on every
+ * boot v7 would rebuild the index v9 had just folded, undoing the migration.
+ * The folded form belongs to v9 alone, which owns the collision report.
+ */
+const NORMALIZED_WORKSPACE_V7_INDEX_EXPR = `(${NORMALIZED_WORKSPACE_LEGACY_SQL})`;
+
+/** True when `pg_get_indexdef` output shows the case-folding (v9) workspace
+ *  index. Function names are printed lower-case, so a substring test is enough
+ *  to tell the two shipped shapes apart without parsing the definition. */
+function isFoldedWorkspaceIndex(indexDef: string | null): boolean {
+  return indexDef !== null && indexDef.includes("translate(");
+}
+
+/**
+ * The installed `uq_bmad_projects_workspace` definition, or null when absent.
+ *
+ * Resolved through `to_regclass('bmad_projects')` rather than a hardcoded
+ * `schemaname = 'public'`: every other statement in this file leaves the schema
+ * to `search_path`, and on a database whose tables live in another schema a
+ * hardcoded filter would return null forever. v7 would then rebuild the
+ * unfolded index on every boot and v9 would fold it back — an endless
+ * ping-pong. `to_regclass` uses the same path as the DDL, so both see the table
+ * they actually operate on.
+ */
+async function workspaceIndexDef(
+  client: { query: typeof pool.query }
+): Promise<string | null> {
+  const res = await client.query<{ indexdef: string }>(
+    `SELECT pg_get_indexdef(i.indexrelid) AS indexdef
+       FROM pg_index i
+       JOIN pg_class c ON c.oid = i.indexrelid
+      WHERE i.indrelid = to_regclass('bmad_projects')
+        AND c.relname = 'uq_bmad_projects_workspace'`
+  );
+  return res.rows[0]?.indexdef ?? null;
+}
 
 /**
  * Transaction-scoped advisory lock serialising the whole v7 migration.
@@ -386,7 +460,7 @@ async function migrateProjectScopedKeys(): Promise<void> {
 
     const workspaceDupes = await client.query<{ values: string; n: string }>(`
       SELECT string_agg(DISTINCT substring(v FROM 1 FOR 60), ', ') AS values, count(*)::text AS n
-        FROM (SELECT workspace_path AS v, ${NORMALIZED_WORKSPACE_SQL} AS k
+        FROM (SELECT workspace_path AS v, ${NORMALIZED_WORKSPACE_LEGACY_SQL} AS k
                 FROM bmad_projects
                WHERE git_remote_url IS NULL AND workspace_path IS NOT NULL) s
        GROUP BY k HAVING count(*) > 1
@@ -409,17 +483,34 @@ async function migrateProjectScopedKeys(): Promise<void> {
     // that cut would keep the weak index forever with no error. Dropping first
     // is idempotent and makes the shape self-correcting. The remote index needs
     // no such treatment — its only shipped definition has always been this one.
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS uq_bmad_projects_remote
-        ON bmad_projects (${NORMALIZED_REMOTE_SQL})
-        WHERE git_remote_url IS NOT NULL
-    `);
-    await client.query(`DROP INDEX IF EXISTS uq_bmad_projects_workspace`);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS uq_bmad_projects_workspace
-        ON bmad_projects (${NORMALIZED_WORKSPACE_INDEX_EXPR})
-        WHERE git_remote_url IS NULL AND workspace_path IS NOT NULL
-    `);
+    //
+    // The expression here is the FROZEN v7 one (see
+    // NORMALIZED_WORKSPACE_V7_INDEX_EXPR and the guard just above): v7 keeps
+    // producing the exact shape it shipped, and v9 — which runs right after —
+    // upgrades it to the case-folded form. Without the guard, every boot would
+    // replay v7's unfold over the index v9 had just folded.
+    if (!isFoldedWorkspaceIndex(await workspaceIndexDef(client))) {
+      await client.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_bmad_projects_remote
+          ON bmad_projects (${NORMALIZED_REMOTE_SQL})
+          WHERE git_remote_url IS NOT NULL
+      `);
+      await client.query(`DROP INDEX IF EXISTS uq_bmad_projects_workspace`);
+      await client.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_bmad_projects_workspace
+          ON bmad_projects (${NORMALIZED_WORKSPACE_V7_INDEX_EXPR})
+          WHERE git_remote_url IS NULL AND workspace_path IS NOT NULL
+      `);
+    } else {
+      // Already on v9's shape: v7 has nothing left to install, and recreating
+      // its old index here would undo the fold. The remote index is still
+      // guarded independently, since it was never rebuilt by v9.
+      await client.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_bmad_projects_remote
+          ON bmad_projects (${NORMALIZED_REMOTE_SQL})
+          WHERE git_remote_url IS NOT NULL
+      `);
+    }
 
     await client.query("COMMIT");
   } catch (error) {
@@ -482,6 +573,119 @@ async function migrateBacklogPromotion(): Promise<void> {
           REFERENCES bmad_tasks (project_id, id)
       `);
     }
+
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Transaction-scoped advisory lock serialising the v9 case-fold migration, for
+ * the same reason as v7's and v8's: two processes booting together must not
+ * both decide the column still needs folding. Distinct key again, so no block
+ * ever waits on another.
+ */
+const SCHEMA_V9_ADVISORY_LOCK = 730_200_003;
+
+/**
+ * Schema v9 — workspace identity is case-folded (D-4).
+ *
+ * `uq_bmad_projects_workspace` is built from `NORMALIZED_WORKSPACE_SQL`, and
+ * that expression now lowercases. An index over a new expression over OLD
+ * values would guard nothing the resolver honours: the resolver computes the
+ * folded key, the rows still hold the unfolded path, and the same workspace
+ * could be inserted a second time. So the stored column is folded in place,
+ * then the index is rebuilt over it.
+ *
+ * Two rows can collide once folded (`/Users/X/proj` and `/users/x/proj` were
+ * two keys and are now one). This migration REFUSES to pick:
+ *   1. it reports every colliding pair by id and name and throws, leaving every
+ *      row untouched (the transaction rolls back), so boot fails loudly with an
+ *      instruction rather than silently merging or deleting a project;
+ *   2. only when nothing collides does it fold, rebuild the index, and commit.
+ *
+ * Idempotent like v7/v8: the fold's predicate is "value differs from its folded
+ * form", so a second boot updates zero rows AND skips the index rebuild
+ * entirely; the index is dropped and recreated (not `IF NOT EXISTS`) only when
+ * a rebuild is actually needed, so a database that ran an earlier cut of this
+ * block self-corrects instead of keeping a stale index forever. Everything runs
+ * on one client under the advisory lock.
+ *
+ * Deliberately scoped to `bmad_projects`: `bmad_tasks`, `bmad_agent_nodes` and
+ * `bmad_backlogs` are not touched.
+ */
+async function migrateWorkspaceCaseFold(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock($1)", [SCHEMA_V9_ADVISORY_LOCK]);
+
+    // Compared on the FOLDED trailingslash-free forms, because that is exactly
+    // what the unique index will consider equal. Grouped rows are reported by
+    // their own id and stored path so the operator can tell the projects apart.
+    const collisions = await client.query<{ ids: string; names: string; paths: string }>(`
+      SELECT string_agg(id, ', ' ORDER BY id)                AS ids,
+             string_agg(name, ', ' ORDER BY id)              AS names,
+             string_agg(workspace_path, ', ' ORDER BY id)    AS paths
+        FROM bmad_projects
+       WHERE git_remote_url IS NULL AND workspace_path IS NOT NULL
+       GROUP BY ${NORMALIZED_WORKSPACE_SQL}
+      HAVING count(*) > 1
+    `);
+    if (collisions.rows.length > 0) {
+      throw new Error(
+        `[db] schema v9 cannot run: ${collisions.rows.length} workspace path group(s) would collapse ` +
+          `into one case-folded key. Resolve each pair by hand (keep one, or give one its own path), then restart. ` +
+          collisions.rows
+            .map(
+              (row) =>
+                `Projects ${row.ids} ("${row.names}") share workspace paths ${row.paths}`
+            )
+            .join("; ")
+      );
+    }
+
+    // Already migrated: every stored path equals its normalised form AND the
+    // installed index already carries the fold. Nothing to rewrite, and nothing
+    // to rebuild — recreating an identical index on every boot would be pure
+    // write amplification. The collision check above still ran, so a pair that
+    // appears later is reported even on this path.
+    //
+    // The comparison uses NORMALIZED_WORKSPACE_SQL itself, not a hand-inlined
+    // copy: the expression carries the root-preserving CASE arm (`/` stays `/`),
+    // and a copy that dropped it would rewrite a root row to `''` — a key no
+    // lookup can ever reach — and report it as still-unfolded on every boot.
+    const unfolded = await client.query<{ count: number }>(`
+      SELECT COUNT(*)::int AS count FROM bmad_projects
+       WHERE workspace_path IS NOT NULL
+         AND (${NORMALIZED_WORKSPACE_SQL}) IS DISTINCT FROM workspace_path
+    `);
+    const indexReady = isFoldedWorkspaceIndex(await workspaceIndexDef(client));
+    if (unfolded.rows[0]?.count === 0 && indexReady) {
+      await client.query("COMMIT");
+      return;
+    }
+
+    // The fold itself: write the same expression the index is built from, so
+    // every stored value IS its own folded form afterwards and the index never
+    // re-folds it differently. Root is preserved by the expression's CASE arm.
+    await client.query(`
+      UPDATE bmad_projects
+         SET workspace_path = (${NORMALIZED_WORKSPACE_SQL})
+       WHERE workspace_path IS NOT NULL
+         AND (${NORMALIZED_WORKSPACE_SQL}) IS DISTINCT FROM workspace_path
+    `);
+
+    await client.query(`DROP INDEX IF EXISTS uq_bmad_projects_workspace`);
+    await client.query(`
+      CREATE UNIQUE INDEX uq_bmad_projects_workspace
+        ON bmad_projects (${NORMALIZED_WORKSPACE_INDEX_EXPR})
+        WHERE git_remote_url IS NULL AND workspace_path IS NOT NULL
+    `);
 
     await client.query("COMMIT");
   } catch (error) {
@@ -828,6 +1032,12 @@ export function ensureSchema(): Promise<void> {
       // bmad_tasks (project_id, id) key v7 installs. Catalog-guarded steps in
       // migrateBacklogPromotion.
       await migrateBacklogPromotion();
+
+      // ---- Schema v9: case-folded workspace identity (D-4) -----------------
+      // Last, because it rebuilds the identity index v7 installed: it must see
+      // the index (to drop it) and the column (to fold it). Catalog-guarded
+      // steps in migrateWorkspaceCaseFold.
+      await migrateWorkspaceCaseFold();
     })().catch((error) => {
       // Allow a later request to retry if bootstrap failed (e.g. DB was down)
       schemaReady = null;
