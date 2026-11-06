@@ -6,6 +6,14 @@ import {
   bmadTaskToAgentTask,
   type AgentTask,
 } from "./agent-board-data";
+import {
+  createLoadTracker,
+  mergeLoad,
+  runLoad,
+  type BoardSnapshot,
+  type Loaded,
+  type LoadState,
+} from "./board-load";
 import { WorktreeTree } from "./worktree-tree";
 import {
   demoWorktreeRun,
@@ -22,24 +30,52 @@ import type { BMadAgentTreeNode, BMadTaskItem } from "@/lib/bmad";
 import { useActiveProject } from "./project-context";
 import "./search-filter-controls.css";
 
-/** `"loading"` and `"error"` describe the first load; `"ready"` means the
- *  last response for the active project committed. Empty is `"ready"` with
- *  zero tasks — never a demo fixture standing in for the database. */
-type LoadState = "loading" | "ready" | "error";
+/** `ProjectSnapshot` (and the `LoadState` halves it carries) lives in
+ *  `board-load.ts`: the token rule and the per-request state mapping are pure
+ *  there, so they run under the node-environment unit suite. */
+type ProjectSnapshot = BoardSnapshot<AgentTask, WorktreeNode>;
 
-/**
- * Everything shown for one project, tagged with the project it came from.
- * The tag is what makes switching safe: a response (or a stale render) from
- * project A can never be read as project B's data, and no reset effect is
- * needed — state for a project the panel is no longer showing is simply not
- * current. `tasks: []` is a real answer, never a fixture.
- */
-interface ProjectSnapshot {
-  projectId: string;
-  tasks: AgentTask[];
-  worktreeRun: WorktreeNode | null;
-  loadState: LoadState;
-  lastSyncTime: string | null;
+/** Read one request as a `Loaded<T>`: transport failure, a non-2xx status, an
+ *  unparseable body, and a body of the wrong shape all mean "this request
+ *  failed", never "the pair did".
+ *
+ *  Shape is validated here rather than trusted, following the convention the
+ *  project list uses (`project-context.tsx`): a 200 with an error object, or a
+ *  row that is not a task, must not become "no tasks" or a fabricated card —
+ *  that is exactly the silent fabrication this board's headers forbid.
+ *
+ *  Logging is the caller's decision: on a 5 s poll against a down database,
+ *  warning here would be two warnings every 5 seconds forever. */
+async function readLoaded<T>(request: Promise<Response>, parse: (body: unknown) => T): Promise<Loaded<T>> {
+  try {
+    const response = await request;
+    if (!response.ok) return { ok: false };
+    return { ok: true, value: parse(await response.json()) };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/** `GET /tasks` answers an array of tasks; anything else (including an error
+ *  envelope that still returned 2xx) is a failed read. Non-object rows are
+ *  dropped rather than mapped — `bmadTaskToAgentTask` would happily fabricate
+ *  a card from `null`. */
+function parseTasks(body: unknown): AgentTask[] {
+  if (!Array.isArray(body)) throw new Error("Unexpected /tasks payload");
+  return body
+    .filter((row): row is BMadTaskItem => typeof row === "object" && row !== null)
+    .map(bmadTaskToAgentTask);
+}
+
+/** `GET /agent-tree` answers a node object or `null` when the project has no
+ *  tree. Anything else is a failed read, not an empty tree — a `{error}` body
+ *  rendered as "Belum ada pohon agen" would claim the project has no agents. */
+function parseTree(body: unknown): WorktreeNode | null {
+  if (body === null) return null;
+  if (typeof body !== "object" || typeof (body as { id?: unknown }).id !== "string") {
+    throw new Error("Unexpected /agent-tree payload");
+  }
+  return bmadNodeToWorktreeNode(body as BMadAgentTreeNode);
 }
 
 export function AgentBoardView() {
@@ -60,8 +96,11 @@ export function AgentBoardView() {
   const current = snapshot && snapshot.projectId === projectId ? snapshot : null;
   const tasks = current?.tasks ?? [];
   const worktreeRun = current?.worktreeRun ?? null;
-  const loadState: LoadState = current?.loadState
-    ?? (projectStatus === "error" ? "error" : "loading");
+  // Two independent states: each half of the board reports only its own
+  // request, so one failing never marks the other as failed.
+  const projectLoadState: LoadState = projectStatus === "error" ? "error" : "loading";
+  const tasksState: LoadState = current?.tasksState ?? projectLoadState;
+  const treeState: LoadState = current?.treeState ?? projectLoadState;
   const lastSyncTime = current?.lastSyncTime ?? null;
   const openIds = openState.projectId === projectId ? openState.ids : [];
   const justMovedId = justMoved && justMoved.projectId === projectId ? justMoved.id : null;
@@ -69,8 +108,14 @@ export function AgentBoardView() {
   // Latest active project, readable from async callbacks. Kept in a ref so a
   // response that started before a switch can tell it is no longer current.
   const projectIdRef = useRef<string | null>(projectId);
+  // Which load may still write: a monotonic token per project, taken when a
+  // load STARTS. It complements the project guard above — the guard alone let a
+  // poll that started before an approve/reject commit AFTER the post-mutation
+  // reload and put the old card state back on screen.
+  const loadTracker = useRef(createLoadTracker());
   useEffect(() => {
     projectIdRef.current = projectId;
+    loadTracker.current.setActiveProject(projectId);
   }, [projectId]);
 
   // `syncingFor` instead of a boolean: "is this project loading" derives from
@@ -78,65 +123,52 @@ export function AgentBoardView() {
   // left over from the previous project.
   const [syncingFor, setSyncingFor] = useState<string | null>(null);
 
+  // One warning per transition INTO failure, not per poll: a 5 s poll against a
+  // down database would otherwise log two lines every 5 seconds forever. Reset
+  // whenever a load succeeds again, so the next outage is reported too.
+  const failingRef = useRef(false);
+
   const loadProjectData = useCallback(async (id: string) => {
     const segment = encodeURIComponent(id);
+    // The pre-existing project guard, kept alongside the token: a response for
+    // a project the panel no longer shows is never current.
     const isStale = () => projectIdRef.current !== id;
-    setSyncingFor(id);
-    try {
-      const [tasksResult, treeResult] = await Promise.allSettled([
+    const token = loadTracker.current.start(id);
+    // A load for a project the panel no longer shows must not even light the
+    // sync indicator: that id can never be cleared again (its own finally is
+    // stale), so it would leave the indicator claiming a sync that is not
+    // happening here.
+    if (!isStale()) setSyncingFor(id);
+    const outcome = await runLoad({
+      tracker: loadTracker.current,
+      token,
+      tasks: readLoaded<AgentTask[]>(
         apiFetch(`/api/projects/${segment}/tasks`, { cache: "no-store" }),
+        parseTasks,
+      ),
+      tree: readLoaded<WorktreeNode | null>(
         apiFetch(`/api/projects/${segment}/agent-tree`, { cache: "no-store" }),
-      ]);
-      if (isStale()) return;
-
-      let failed = false;
-      let tasksLoaded = false;
-      let treeLoaded = false;
-      let nextTasks: AgentTask[] | null = null;
-      let nextTree: WorktreeNode | null = null;
-
-      if (tasksResult.status === "fulfilled" && tasksResult.value.ok) {
-        const liveTasks: BMadTaskItem[] = await tasksResult.value.json();
-        if (isStale()) return;
-        // An empty list is a real answer: the project simply has no tasks.
-        nextTasks = Array.isArray(liveTasks) ? liveTasks.map(bmadTaskToAgentTask) : [];
-        tasksLoaded = true;
-      } else {
-        failed = true;
+        parseTree,
+      ),
+    });
+    // A superseded load writes NOTHING: no snapshot, no lastSyncTime, and no
+    // indicator change. The commit and the clear are separate guards because
+    // the indicator belongs to the load in flight, not to the one settling: a
+    // stale load may finish while a NEWER load is still running, and clearing
+    // on settle would drop the dot to "idle" mid-sync.
+    if (outcome && !isStale()) {
+      // Both half-failure paths (a rejected request folded by `runLoad`, and a
+      // 2xx body of the wrong shape) arrive here as `ok: false`; `readLoaded`
+      // never rejects, so there is no third path to invent.
+      const failed = !outcome.tasks.ok || !outcome.tree.ok;
+      if (failed !== failingRef.current) {
+        failingRef.current = failed;
+        if (failed) console.warn("[BMad Monitor] Sebagian data BMad gagal dimuat; menampilkan hasil sync terakhir.");
       }
-
-      if (treeResult.status === "fulfilled" && treeResult.value.ok) {
-        const liveTree: BMadAgentTreeNode | null = await treeResult.value.json();
-        if (isStale()) return;
-        nextTree = liveTree ? bmadNodeToWorktreeNode(liveTree) : null;
-        treeLoaded = true;
-      } else {
-        failed = true;
-      }
-
-      if (isStale()) return;
-      const committedTasks = nextTasks;
-      const committedTree = nextTree;
-      setSnapshot(previous => {
-        // Keep whatever the other request already committed for this project
-        // when only one half of the pair failed.
-        const base = previous && previous.projectId === id ? previous : null;
-        return {
-          projectId: id,
-          tasks: tasksLoaded ? committedTasks ?? [] : base?.tasks ?? [],
-          worktreeRun: treeLoaded ? committedTree : base?.worktreeRun ?? null,
-          loadState: failed ? "error" : "ready",
-          lastSyncTime: new Date().toLocaleTimeString(),
-        };
-      });
-    } catch (err) {
-      if (isStale()) return;
-      console.warn("[BMad Monitor] Gagal sinkronisasi data live:", err);
-      setSnapshot(previous => (previous && previous.projectId === id
-        ? { ...previous, loadState: "error" }
-        : { projectId: id, tasks: [], worktreeRun: null, loadState: "error", lastSyncTime: null }));
-    } finally {
-      if (!isStale()) setSyncingFor(syncing => (syncing === id ? null : syncing));
+      setSnapshot(previous => mergeLoad(previous, outcome, new Date().toLocaleTimeString()));
+    }
+    if (!isStale() && loadTracker.current.isCurrent(token)) {
+      setSyncingFor(syncing => (syncing === id ? null : syncing));
     }
   }, []);
 
@@ -279,27 +311,47 @@ export function AgentBoardView() {
     }
   };
 
+  // The project-level branch is shared: with no workspace selected, both tabs
+  // must report the workspace list's state rather than claim their own data is
+  // still loading forever (a failing `/api/projects` never produces an id).
+  const projectMessage = projectStatus === "error"
+    ? "Gagal memuat daftar workspace. Coba muat ulang halaman."
+    : projectStatus === "ready"
+      ? "Belum ada workspace terdaftar."
+      : "Memuat workspace…";
+
+  // Each tab reads its OWN half of the snapshot, never the pair. The failure
+  // copy must also appear when data from the last successful sync is still on
+  // screen (`mergeLoad` keeps it), otherwise a board that worked and then
+  // started failing would show stale data and no warning at all — the very
+  // case this story exists to make visible. `retained` is that distinction.
+  const tasksRetained = tasks.length > 0;
+  const treeRetained = worktreeRun !== null;
+
+  const boardEmptyMessage = tasksRetained
+    ? "Gagal memperbarui task workspace ini. Menampilkan data dari sync terakhir yang berhasil."
+    : "Gagal memuat task workspace ini. Periksa koneksi database lalu tekan Refresh.";
   const emptyMessage = !projectId
-    ? projectStatus === "error"
-      ? "Gagal memuat daftar workspace. Coba muat ulang halaman."
-      : projectStatus === "ready"
-        ? "Belum ada workspace terdaftar."
-        : "Memuat workspace…"
-    : loadState === "loading"
+    ? projectMessage
+    : tasksState === "loading"
       ? "Memuat task workspace…"
-      : loadState === "error"
-        ? "Gagal memuat task workspace ini. Periksa koneksi database lalu tekan Refresh."
+      : tasksState === "error"
+        ? boardEmptyMessage
         : `Belum ada task di workspace ${project?.name ?? "ini"}. Task yang dilaporkan agent akan muncul di sini.`;
 
   // Only the board's own emptiness belongs here. The worktree tab has its own
   // message below; rendering both at once tells the user two different things
   // about one project.
-  const showEmptyMessage = !projectId || loadState === "loading" || loadState === "error" || tasks.length === 0;
-  const worktreeEmptyMessage = loadState === "loading"
-    ? "Memuat pohon agen…"
-    : loadState === "error"
-      ? "Gagal memuat pohon agen workspace ini."
-      : `Belum ada pohon agen di workspace ${project?.name ?? "ini"}.`;
+  const showEmptyMessage = !projectId || tasksState === "loading" || tasksState === "error" || tasks.length === 0;
+  const worktreeEmptyMessage = !projectId
+    ? projectMessage
+    : treeState === "loading"
+      ? "Memuat pohon agen…"
+      : treeState === "error"
+        ? treeRetained
+          ? "Gagal memperbarui pohon agen workspace ini. Menampilkan pohon dari sync terakhir yang berhasil."
+          : "Gagal memuat pohon agen workspace ini."
+        : `Belum ada pohon agen di workspace ${project?.name ?? "ini"}.`;
 
   return (
     <section aria-label="Agent Board" className="flex min-w-0 flex-col gap-4 pb-6">
@@ -318,7 +370,10 @@ export function AgentBoardView() {
           ]}
         />
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {/* `data-sync-state` mirrors the dot for tests: the dot is
+              decorative (`aria-hidden`), so its colour is not observable. */}
           <span
+            data-sync-state={syncingFor === projectId && projectId !== null ? "syncing" : "idle"}
             className={`inline-block size-2 rounded-full ${
               syncingFor === projectId && projectId !== null ? "bg-amber-500 animate-pulse" : "bg-emerald-500"
             }`}
@@ -394,14 +449,26 @@ export function AgentBoardView() {
           </div>
 
           {tab === "worktree" && (worktreeSample === "live"
-            ? worktreeRun
-              // Keyed by project so the tree's open/focus state resets on a switch.
-              ? <WorktreeTree key={`live-${projectId ?? "none"}`} run={worktreeRun} />
-              : (
-                <p role="status" className="rounded-[10px] bg-muted/50 px-3 py-8 text-center text-xs text-muted-foreground">
-                  {worktreeEmptyMessage}
-                </p>
-              )
+            ? (
+              <>
+                {/* Rendered ABOVE the tree, not instead of it: when the last
+                    sync succeeded and this one failed, the tree on screen is
+                    stale and the user must be told so. */}
+                {treeState === "error" && (
+                  <p role="status" className="mb-2 rounded-[10px] bg-muted/50 px-3 py-6 text-center text-xs text-muted-foreground">
+                    {worktreeEmptyMessage}
+                  </p>
+                )}
+                {worktreeRun
+                  // Keyed by project so the tree's open/focus state resets on a switch.
+                  ? <WorktreeTree key={`live-${projectId ?? "none"}`} run={worktreeRun} />
+                  : treeState !== "error" && (
+                    <p role="status" className="rounded-[10px] bg-muted/50 px-3 py-8 text-center text-xs text-muted-foreground">
+                      {worktreeEmptyMessage}
+                    </p>
+                  )}
+              </>
+            )
             : <WorktreeTree key={`pricing-${projectId ?? "none"}`} run={demoWorktreeRun} />)}
           <p className="mt-4 text-xs text-muted-foreground">
             Pohon agen BMad Monitor real-time · Metrik Token Usage (input, output, cache) dilaporkan secara otomatis oleh sub-agent.
