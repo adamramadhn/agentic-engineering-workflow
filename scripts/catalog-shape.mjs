@@ -24,11 +24,17 @@ import pg from "pg";
  *
  * A dump that captured nothing would be identical to another dump that captured
  * nothing, so "the two shapes match" and "the shape did not change" must never
- * be satisfiable by an empty result. The full v2→v9 catalog is 381 rows on the
- * current schema; the floor is well below that so adding a table does not
- * require touching this number, while an empty or partial dump still fails.
+ * be satisfiable by an empty result.
+ *
+ * The floor must hold on EVERY supported server version, which is why it is
+ * measured on the oldest one CI runs (postgres:16) and not on a developer's
+ * local server. The same schema dumped 381 rows on PostgreSQL 18 and 257 on
+ * PostgreSQL 16 while NOT NULL rows were included; excluding them (they are
+ * already covered by the column rows) makes the count version-stable, and this
+ * floor sits below the PG16 figure so adding a table does not require touching
+ * it while an empty or partial dump still fails.
  */
-export const MIN_CATALOG_ROWS = 300;
+export const MIN_CATALOG_ROWS = 220;
 
 /**
  * Every table, column, constraint and index in `public`, one sorted line each.
@@ -53,10 +59,17 @@ export async function readCatalogShape(connectionString) {
           FROM information_schema.columns
          WHERE table_schema = 'public'
         UNION ALL
+        -- PostgreSQL 17 made NOT NULL constraints real catalog rows
+        -- (contype = 'n'). Counting them made the floor below
+        -- version-dependent: PG18 produced 381 rows and PG16 produced 257 for
+        -- the SAME schema, so the bootstrap test failed on CI while passing
+        -- locally. Nullability is already captured by the column rows above
+        -- (is_nullable), so these are excluded rather than mirrored.
         SELECT 'constraint', conrelid::regclass::text || '.' || conname,
                pg_get_constraintdef(oid)
           FROM pg_constraint
          WHERE connamespace = 'public'::regnamespace
+           AND contype <> 'n'
         UNION ALL
         SELECT 'index', schemaname || '.' || indexname, indexdef
           FROM pg_indexes
