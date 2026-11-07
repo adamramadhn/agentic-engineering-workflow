@@ -72,8 +72,11 @@ async function checkGeometry(page, selector) {
       await page.locator("#email").fill(process.env.TEST_EMAIL || "admin@onyx.dev");
       await page.locator("#password").fill(process.env.TEST_PASSWORD || "password123");
       await page.getByRole("button", { name: "Sign in", exact: true }).click();
-      // Client-side navigation: the load event never fires for it.
-      await page.waitForURL(url => new URL(url).pathname === "/", { timeout: 60_000 });
+      // Client-side navigation: the load event never fires for it. Signing in
+      // from /agent-board honours the `?next=` param, so the landing page is
+      // /agent-board, not /. Waiting for "/" hung forever; wait for "no longer
+      // on /login" instead, which is what signing in actually guarantees.
+      await page.waitForURL(url => new URL(url).pathname !== "/login", { timeout: 60_000 });
       await page.goto(`${base}/agent-board`);
     }
     const boardTab = page.getByRole("tab", { name: "Board", exact: true });

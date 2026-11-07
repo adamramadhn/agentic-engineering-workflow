@@ -80,7 +80,12 @@ function contrast(fg, bg) {
         };
       });
       assert.equal(measured.width, 248);
-      assert.ok(measured.height < 230, `compact menu height: ${measured.height}`);
+      // Still a COMPACT menu, but no longer < 230: story 6 added a state note
+      // to the group label (the switcher has to say loading/failed/empty), and
+      // with the seeded two workspaces that is 234px. The guard keeps its
+      // purpose — a menu that grows a row per workspace or loses its compact
+      // rhythm still fails — without failing on the note that was asked for.
+      assert.ok(measured.height < 260, `compact menu height: ${measured.height}`);
       assert.equal(measured.background, mode === 'light' ? 'rgb(255, 255, 255)' : 'rgb(18, 18, 21)');
       assert.match(measured.font, /Geist/);
       for (const sample of measured.samples) {
