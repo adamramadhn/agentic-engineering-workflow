@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { switcherCopy } from "./workspace-switcher-state";
+import {
+  WORKSPACE_LIST_FAILED,
+  WORKSPACE_LIST_STALE,
+  switcherCopy,
+} from "./workspace-switcher-state";
 
 /**
  * The Workspace Switcher's copy rules, as pure logic. The component itself
@@ -19,7 +23,8 @@ describe("switcherCopy", () => {
   it("an empty list on error reports the failure", () => {
     const copy = switcherCopy("error", 0, "");
     expect(copy.trigger).toBe("Gagal memuat workspace");
-    expect(copy.note).toBe("Daftar workspace tidak dapat dimuat.");
+    // One sentence, shared with the board's recovery notice.
+    expect(copy.note).toBe(WORKSPACE_LIST_FAILED);
     expect(copy.staleFailure).toBeUndefined();
   });
 
@@ -76,5 +81,14 @@ describe("switcherCopy", () => {
     // WCAG 2.5.3: the accessible name must contain the visible label verbatim,
     // so a voice-control user can say what they see.
     expect(copy.label.startsWith(copy.trigger)).toBe(true);
+  });
+});
+
+describe("the shared failure sentences", () => {
+  it("a stale list adds the caveat rather than contradicting the base sentence", () => {
+    // The switcher's note for a failed refresh over rows; the board and
+    // sidebar can never reach this state and use the base sentence alone.
+    expect(WORKSPACE_LIST_STALE).toContain(WORKSPACE_LIST_FAILED);
+    expect(WORKSPACE_LIST_STALE).not.toBe(WORKSPACE_LIST_FAILED);
   });
 });

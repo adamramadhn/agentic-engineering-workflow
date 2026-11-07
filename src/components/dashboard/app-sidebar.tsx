@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import Image from "next/image";
 import Link from "next/link";
 import {
+  AlertCircle,
   ChevronUp,
   MoreHorizontal,
   PanelLeft,
@@ -15,6 +16,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { UserProfileMenu } from "./user-profile-menu";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 import { useActiveProject, workspaceSubtitle } from "./project-context";
+import { WORKSPACE_LIST_FAILED } from "./workspace-switcher-state";
 import { useAnnounce } from "./announcement-context";
 import { usePermission } from "./permission-provider";
 import { pageViewPermission } from "@/lib/permissions";
@@ -36,6 +38,65 @@ function AdminNavigation({ currentRoute, collapsed = false, onNavigate }: { curr
         <item.icon className="size-4 shrink-0" aria-hidden="true" />{!collapsed && <span>{item.label}</span>}
       </Link>)}
     </nav>
+  );
+}
+
+/**
+ * Visible recovery for a failed workspace list, directly under the switcher.
+ *
+ * The switcher's menu already carries "Coba lagi", but that affordance only
+ * exists once the menu is open — the sidebar showed a failed (or stale) chip
+ * with no way forward short of a page reload, which is the hole D-8b names.
+ * Both call the context's one `reload()`, so there is still a single path.
+ *
+ * The news is the sentence inside a `role="status"` region, and the button is
+ * its sibling — the same shape the board's notice uses. Putting the button
+ * inside the region would re-announce the sentence every time it is focused.
+ * The two sentences come from `workspace-switcher-state`, so the sidebar and
+ * the board cannot drift apart.
+ */
+function WorkspaceListRecovery({ collapsed, onRetry }: {
+  collapsed: boolean;
+  onRetry: () => void;
+}) {
+  // No stale variant: nothing calls `reload()` while rows are loaded, so the
+  // sidebar can only ever be in this state with an empty list. The switcher's
+  // menu note covers the stale case it can actually reach.
+  const sentence = WORKSPACE_LIST_FAILED;
+  // `reload()` flips the status to "loading" synchronously, which unmounts
+  // this row in the same click — taking keyboard focus with it and dropping it
+  // to <body>. Focus moves to the sidebar column first, which stays mounted.
+  const retry = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const column = event.currentTarget.closest<HTMLElement>("[data-workspace-column]");
+    column?.focus();
+    onRetry();
+  };
+
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={retry}
+        title={`${sentence} Coba lagi`}
+        aria-label={`${sentence} Coba lagi`}
+        className="mx-auto mt-1 flex size-8 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200 cursor-pointer"
+      >
+        <AlertCircle className="size-4" aria-hidden="true" />
+      </button>
+    );
+  }
+  return (
+    <div className="mt-1 flex w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-normal text-neutral-600 dark:text-neutral-400">
+      <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
+      <p role="status" className="min-w-0 flex-1">{sentence}</p>
+      <button
+        type="button"
+        onClick={retry}
+        className="shrink-0 cursor-pointer font-medium underline hover:text-neutral-900 dark:hover:text-neutral-100"
+      >
+        Coba lagi
+      </button>
+    </div>
   );
 }
 
@@ -109,7 +170,7 @@ export function AppSidebar({
           openMobile ? "translate-x-0" : "-translate-x-full pointer-events-none"
         }`}
       >
-        <div className="min-h-0 w-full flex-1 overflow-y-auto scrollbar-none">
+        <div data-workspace-column tabIndex={-1} className="min-h-0 w-full flex-1 overflow-y-auto scrollbar-none focus-visible:outline-none">
           {/* Workspace Brand Row with Close Button */}
           <div className="flex h-8 w-full items-center justify-between px-1">
             <WorkspaceSwitcher workspaces={workspaces} value={currentWorkspaceId} onChange={handleSwitchWorkspace} status={projectStatus} onRetry={reload} />
@@ -123,6 +184,8 @@ export function AppSidebar({
               <X className="size-4" />
             </button>
           </div>
+
+          {projectStatus === "error" && <WorkspaceListRecovery collapsed={false} onRetry={reload} />}
 
           {/* Search Trigger on Mobile */}
           <button
@@ -235,7 +298,7 @@ export function AppSidebar({
           isCollapsed ? "w-[60px]" : "w-[240px]"
         }`}
       >
-        <div className="min-h-0 w-full flex-1 overflow-y-auto scrollbar-none">
+        <div data-workspace-column tabIndex={-1} className="min-h-0 w-full flex-1 overflow-y-auto scrollbar-none focus-visible:outline-none">
           {/* Workspace Brand Row */}
           <div
             className={`flex h-8 w-full items-center ${
@@ -256,6 +319,8 @@ export function AppSidebar({
               </button>
             )}
           </div>
+
+          {projectStatus === "error" && <WorkspaceListRecovery collapsed={isCollapsed} onRetry={reload} />}
 
           {/* Search Trigger Button */}
           <button

@@ -1,4 +1,19 @@
-import type { ProjectStatus } from "./project-context";
+import type { ProjectStatus } from "./project-selection";
+
+/**
+ * The one sentence for a workspace list that could not be read. Four spellings
+ * of this across three modules (and e2e regexes pinned to two of them) is how
+ * the board's recovery copy drifted away from the switcher's; every surface
+ * that reports the failure now reads it from here.
+ */
+export const WORKSPACE_LIST_FAILED = "Daftar workspace gagal dimuat.";
+
+/** The same failure when rows from the last successful load are still on
+ *  screen, so the list is stale rather than absent. Reached by the switcher
+ *  menu, whose rows survive a failed refresh; the board and sidebar notices
+ *  cannot reach that state (nothing reloads the list while rows are loaded),
+ *  so they always use `WORKSPACE_LIST_FAILED`. */
+export const WORKSPACE_LIST_STALE = "Daftar workspace gagal dimuat. Daftar workspace mungkin sudah tidak terbaru.";
 
 /** What the Workspace Switcher's trigger and menu say for a given state.
  *  `trigger` is the visible trigger text, `label` the trigger's accessible
@@ -43,7 +58,7 @@ export function switcherCopy(
       return {
         trigger,
         label: label(trigger, "ganti workspace; daftar workspace gagal dimuat"),
-        note: "Daftar workspace gagal dimuat. Daftar di bawah mungkin sudah tidak terbaru.",
+        note: WORKSPACE_LIST_STALE,
         staleFailure: true,
       };
     }
@@ -75,7 +90,7 @@ export function switcherCopy(
     return {
       trigger,
       label: label(trigger, "ganti workspace; daftar workspace gagal dimuat"),
-      note: "Daftar workspace tidak dapat dimuat.",
+      note: WORKSPACE_LIST_FAILED,
     };
   }
   const trigger = "Belum ada workspace";

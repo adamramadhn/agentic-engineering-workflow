@@ -28,6 +28,7 @@ import { SegmentedControl } from "@/components/ui/segmented-control-clean";
 import { apiFetch } from "@/lib/api";
 import type { BMadAgentTreeNode, BMadTaskItem } from "@/lib/bmad";
 import { useActiveProject } from "./project-context";
+import { WORKSPACE_LIST_FAILED } from "./workspace-switcher-state";
 import { useAnnounce } from "./announcement-context";
 import "./search-filter-controls.css";
 
@@ -88,27 +89,67 @@ const WORKTREE_SOURCE_DEMO = "Contoh · Halaman harga · 3 cabang";
 
 /** One notice for every state inside the board panels. Three grey blocks that
  *  each picked their own role and padding drifted apart (status/status/note,
- *  py-6/py-8/py-4); `tone` is now the only thing a caller chooses. */
-function BoardNotice({ tone, children, describeId }: {
+ *  py-6/py-8/py-4); `tone` is now the only thing a caller chooses.
+ *
+ *  The live region is the sentence ALONE. A focusable control inside
+ *  `role="status"` makes focusing it re-announce the whole sentence, so the
+ *  action is a sibling in the same row, outside the region. */
+function BoardNotice({ tone, children, describeId, action }: {
   tone: "status" | "sample";
   children: ReactNode;
   /** When set, the notice is a description rather than an announcement. */
   describeId?: string;
+  /** The recovery for the state being reported, when one exists. */
+  action?: ReactNode;
 }) {
   return (
-    <p
-      {...(describeId ? { id: describeId } : {})}
-      {...(tone === "status" ? { role: "status" } : {})}
+    <div
       data-board-notice={tone}
-      className="rounded-[10px] bg-muted/50 px-3 py-4 text-center text-xs text-muted-foreground"
+      className={`rounded-[10px] bg-muted/50 px-3 py-4 text-xs text-muted-foreground ${
+        action ? "flex flex-wrap items-center justify-center gap-2" : "text-center"
+      }`}
     >
-      {children}
-    </p>
+      <p
+        {...(describeId ? { id: describeId } : {})}
+        {...(tone === "status" ? { role: "status" } : {})}
+        className="min-w-0"
+      >
+        {children}
+      </p>
+      {action}
+    </div>
+  );
+}
+
+/**
+ * The "Coba lagi" control for a failed workspace list.
+ *
+ * `reload()` is synchronous: by the time it returns, `status` is already
+ * `"loading"`, this notice is unmounting, and the browser drops focus from the
+ * removed button to `<body>` — a keyboard user loses their place entirely.
+ * Focus is therefore moved to the board's own section first, which stays
+ * mounted. The retry's own progress needs no state here: the board already
+ * renders "Memuat workspace…" for the loading status, so a slow retry is
+ * visibly working, and a second failure simply brings this notice back.
+ */
+function WorkspaceListRetry({ onRetry }: { onRetry: () => void }) {
+  return (
+    <Button
+      variant="secondary"
+      size="sm"
+      onClick={event => {
+        // The section is the nearest stable landmark (it outlives the notice).
+        event.currentTarget.closest("section")?.focus();
+        onRetry();
+      }}
+    >
+      Coba lagi
+    </Button>
   );
 }
 
 export function AgentBoardView() {
-  const { projectId, project, status: projectStatus } = useActiveProject();
+  const { projectId, project, status: projectStatus, reload } = useActiveProject();
   const [snapshot, setSnapshot] = useState<ProjectSnapshot | null>(null);
   // Expansion and fold state are also per project: task ids repeat across
   // projects by design (TASK-101 may exist in both), so carrying A's open ids
@@ -346,11 +387,13 @@ export function AgentBoardView() {
   // The project-level branch is shared: with no workspace selected, both tabs
   // must report the workspace list's state rather than claim their own data is
   // still loading forever (a failing `/api/projects` never produces an id).
-  const projectMessage = projectStatus === "error"
-    ? "Gagal memuat daftar workspace. Coba muat ulang halaman."
-    : projectStatus === "ready"
-      ? "Belum ada workspace terdaftar."
-      : "Memuat workspace…";
+  //
+  // The failure case is deliberately NOT part of this string: a failed list is
+  // rendered once, by `projectListNotice` below, with its recovery. Both panels
+  // suppress the messages that would otherwise repeat it.
+  const projectMessage = projectStatus === "ready"
+    ? "Belum ada workspace terdaftar."
+    : "Memuat workspace…";
 
   // Each tab reads its OWN half of the snapshot, never the pair. The failure
   // copy must also appear when data from the last successful sync is still on
@@ -371,10 +414,32 @@ export function AgentBoardView() {
         ? boardEmptyMessage
         : `Belum ada task di workspace ${project?.name ?? "ini"}. Task yang dilaporkan agent akan muncul di sini.`;
 
-  // Only the board's own emptiness belongs here. The worktree tab has its own
-  // message below; rendering both at once tells the user two different things
-  // about one project.
-  const showEmptyMessage = !projectId || tasksState === "loading" || tasksState === "error" || tasks.length === 0;
+  // A failed project list is recoverable in place. `reload()` is the context's
+  // single recovery path — the same one the switcher's "Coba lagi" uses — so
+  // the board gets a visible way to reach it instead of the old advice to
+  // reload the whole page.
+  //
+  // There is deliberately no "stale but populated" variant here. Reaching it
+  // needs a `reload()` while rows are loaded, and nothing does that: the
+  // switcher's retry only exists on the error path, and the board's Refresh
+  // reloads the board's own data. The switcher's menu DOES reach that state
+  // and says so in its note (`WORKSPACE_LIST_STALE`); claiming to handle it
+  // here would be a branch no user can arrive at.
+  const projectListNotice = projectStatus === "error" ? (
+    <div className="mb-2">
+      <BoardNotice tone="status" action={<WorkspaceListRetry onRetry={reload} />}>
+        {WORKSPACE_LIST_FAILED}
+      </BoardNotice>
+    </div>
+  ) : null;
+
+  // The project-level state is already reported by `projectListNotice`, so the
+  // panel must not repeat it. Only the board's own emptiness belongs here. The
+  // worktree tab has its own message below; rendering both at once tells the
+  // user two different things about one project.
+  const projectListBlocked = !projectId && projectStatus === "error";
+  const showEmptyMessage = !projectListBlocked
+    && (!projectId || tasksState === "loading" || tasksState === "error" || tasks.length === 0);
   const worktreeEmptyMessage = !projectId
     ? projectMessage
     : treeState === "loading"
@@ -386,7 +451,10 @@ export function AgentBoardView() {
         : `Belum ada pohon agen di workspace ${project?.name ?? "ini"}.`;
 
   return (
-    <section aria-label="Agent Board" className="flex min-w-0 flex-col gap-4 pb-6">
+    // `tabIndex={-1}` makes the section focusable as a programme target only:
+    // it takes focus when the retry button unmounts, and stays out of the tab
+    // order otherwise.
+    <section aria-label="Agent Board" tabIndex={-1} className="flex min-w-0 flex-col gap-4 pb-6 focus-visible:outline-none">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="sr-only">Agent Board</h1>
         <SegmentedControl
@@ -414,16 +482,23 @@ export function AgentBoardView() {
           <span>BMad Monitor Live Sync</span>
           {project && <span className="text-[11px] opacity-75">· {project.name}</span>}
           {lastSyncTime && <span className="text-[11px] opacity-75">· {lastSyncTime}</span>}
+          {/* With no project id there is nothing to refetch HERE — the thing
+              that failed was `/api/projects`, and the board's Refresh used to
+              be silently inert in exactly that state. Naming the button's real
+              job in that case is better than a dead control beside a notice
+              that asks the user to recover. */}
           <button
             type="button"
-            onClick={() => { if (projectId) void loadProjectData(projectId); }}
+            onClick={() => { if (projectId) void loadProjectData(projectId); else reload(); }}
             className="ms-1 cursor-pointer underline hover:text-foreground"
-            title="Muat ulang data BMad"
+            title={projectId ? "Muat ulang data BMad" : "Muat ulang daftar workspace"}
           >
             Refresh
           </button>
         </div>
       </div>
+
+      {projectListNotice}
 
       <div className="min-w-0">
         <div
@@ -481,14 +556,15 @@ export function AgentBoardView() {
               <>
                 {/* Rendered ABOVE the tree, not instead of it: when the last
                     sync succeeded and this one failed, the tree on screen is
-                    stale and the user must be told so. */}
-                {treeState === "error" && (
+                    stale and the user must be told so. A failed project list is
+                    the exception — its own notice already says it. */}
+                {treeState === "error" && !projectListBlocked && (
                   <div className="mb-2"><BoardNotice tone="status">{worktreeEmptyMessage}</BoardNotice></div>
                 )}
                 {worktreeRun
                   // Keyed by project so the tree's open/focus state resets on a switch.
                   ? <WorktreeTree key={`live-${projectId ?? "none"}`} run={worktreeRun} />
-                  : treeState !== "error" && <BoardNotice tone="status">{worktreeEmptyMessage}</BoardNotice>}
+                  : treeState !== "error" && !projectListBlocked && <BoardNotice tone="status">{worktreeEmptyMessage}</BoardNotice>}
               </>
             )
             : (

@@ -6,16 +6,26 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { apiFetch } from "@/lib/api";
+import {
+  persistSelection,
+  readSelection,
+  selectionFromStorageEvent,
+  writeSelection,
+  type ProjectStatus,
+  type SelectionStorage,
+} from "./project-selection";
+import { useAnnounce } from "./announcement-context";
 
-/** Where the project list stands. `"error"` means the list could not be read —
- *  not that there are no projects. Exported so every consumer of the status
- *  (`WorkspaceSwitcher`, the board) shares one union: a fourth state added
- *  here must fail to typecheck at each consumer rather than fall through. */
-export type ProjectStatus = "loading" | "ready" | "error";
+/** The project list's state. Owned by `./project-selection` (a pure module)
+ *  and re-exported here so every consumer of the status (`WorkspaceSwitcher`,
+ *  the board) keeps one import path — and a fourth state added there must fail
+ *  to typecheck at each consumer rather than fall through. */
+export type { ProjectStatus };
 
 /** The subset of `GET /api/projects` the dashboard actually consumes. */
 export interface WorkspaceProject {
@@ -39,26 +49,19 @@ interface ProjectContextValue {
 
 const ProjectContext = createContext<ProjectContextValue | null>(null);
 
-/** Remembers the selection across reloads. Holds a project *id*: workspace
- *  names are display labels, and the API does not promise they are unique. */
-const STORAGE_KEY = "bmad-monitor.active-project-id";
+/** The stored id lives under `ACTIVE_PROJECT_KEY` (see `./project-selection`).
+ *  Access goes through a thunk because reading `window.localStorage` itself
+ *  throws when storage is blocked — the pure module turns that into `null`. */
+function localSelectionStorage(): SelectionStorage {
+  return window.localStorage;
+}
 
 function readStoredProjectId(): string | null {
-  try {
-    return window.localStorage.getItem(STORAGE_KEY);
-  } catch {
-    // Storage disabled (private mode, blocked origin): no persistence, no crash.
-    return null;
-  }
+  return readSelection(localSelectionStorage);
 }
 
 function storeProjectId(id: string | null): void {
-  try {
-    if (id) window.localStorage.setItem(STORAGE_KEY, id);
-    else window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Same as above: the selection simply does not survive a reload.
-  }
+  writeSelection(localSelectionStorage, id);
 }
 
 function toProject(value: unknown): WorkspaceProject | null {
@@ -123,6 +126,25 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const [projectId, setProjectIdState] = useState<string | null>(null);
   const [status, setStatus] = useState<ProjectStatus>("loading");
   const [reloadToken, setReloadToken] = useState(0);
+  // The id this tab adopted from ANOTHER tab's `storage` event. The persist
+  // effect skips it, so adopting a selection is never echoed back — without
+  // this, two tabs would write each other's selection forever and only the
+  // browser's same-value dedupe would hide it. A ref, not state: writing it
+  // is not a reason to render, and the effect reads the value current at the
+  // render it runs for.
+  const receivedProjectId = useRef<string | null>(null);
+  // The list as the storage listener sees it. The listener is registered once
+  // and must not re-register on every fetch, so it reads this ref instead.
+  // Assigned in the fetch `.then` BESIDE `setProjects`, not in a mirror
+  // effect: an effect runs after the commit, and a `storage` event delivered
+  // in between would validate against the previous list and drop a valid id.
+  const projectsRef = useRef<WorkspaceProject[]>([]);
+  // Adopting another tab's selection is a workspace switch like any other, so
+  // it is announced the same way — a screen-reader user gets no other signal
+  // that their board just changed underneath them.
+  const announce = useAnnounce();
+  // The name a `storage` adoption should announce, once the list confirms it.
+  const adoptedRef = useRef<string | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -140,6 +162,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         const list = payload
           .map(toProject)
           .filter((project): project is WorkspaceProject => project !== null);
+        projectsRef.current = list;
         setProjects(list);
         setStatus("ready");
         setProjectIdState(current => resolveActiveProjectId(list, current, readStoredProjectId()));
@@ -154,21 +177,84 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     };
   }, [reloadToken]);
 
+  // Another tab's selection. `storage` fires only in the tabs that did NOT
+  // write, so this is the only cross-tab path — the writer's own tab keeps its
+  // ordinary behaviour.
+  //
+  // The id is applied only when the list this tab already loaded contains it:
+  // the other tab may be on a newer list, or selecting a project this tab has
+  // not fetched yet, and pointing the board at a project it cannot name would
+  // be worse than staying put. A removal (`newValue === null`) is ignored for
+  // the same class of reason — it is not a selection.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    // Even reading `window.localStorage` throws when storage is blocked; the
+    // listener must not be what crashes the page.
+    let area: unknown;
+    try {
+      area = window.localStorage;
+    } catch {
+      area = undefined;
+    }
+    const onStorage = (event: StorageEvent) => {
+      // `storageArea` is checked against this tab's localStorage: a same-key
+      // write to sessionStorage (an iframe, another library) fires this event
+      // too and is not a workspace switch.
+      const next = selectionFromStorageEvent(
+        event,
+        projectsRef.current.map(item => item.id),
+        area,
+      );
+      if (next === null) return;
+      receivedProjectId.current = next;
+      const name = projectsRef.current.find(item => item.id === next)?.name;
+      // A receipt for the id this tab already shows is not a switch: React
+      // skips the render, so nothing must be announced either.
+      setProjectIdState(current => {
+        if (current === next) return current;
+        adoptedRef.current = name ?? next;
+        return next;
+      });
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  // Announce an adoption once the render that shows it has committed. Kept out
+  // of the storage handler: `setProjectIdState`'s updater may run twice and
+  // must stay free of side effects.
+  useEffect(() => {
+    const name = adoptedRef.current;
+    if (name === null) return;
+    adoptedRef.current = null;
+    announce(`Beralih ke workspace ${name}.`);
+  }, [projectId, announce]);
+
   // Persist only a selection the list confirmed. Writing during the initial
   // `null` would erase the remembered id before the fetch that reads it lands,
-  // which is exactly how a reload would lose the workspace.
+  // which is exactly how a reload would lose the workspace. All of the
+  // decisions live in `persistSelection` (node-testable); this effect only
+  // carries them out.
   useEffect(() => {
-    // Only forget the remembered project when the list is known and non-empty
-    // and the stored id is genuinely gone from it. Clearing on an EMPTY list
-    // would let one transient incomplete response erase the user's choice for
-    // good, since the id can only be repaired on the next successful load.
-    if (status !== "ready" || projectId === null) return;
-    const stored = readStoredProjectId();
-    if (projects.length === 0 && stored !== null) return;
-    storeProjectId(projectId);
+    const write = persistSelection({
+      status,
+      projectId,
+      projectCount: projects.length,
+      stored: readStoredProjectId(),
+      received: receivedProjectId.current,
+    });
+    if (write === null) return;
+    storeProjectId(write);
+    // A pass that writes means the selection is no longer the received one
+    // (the decision rule guarantees it), so the marker has done its job.
+    receivedProjectId.current = null;
   }, [projectId, projects.length, status]);
 
   const setProjectId = useCallback((id: string) => {
+    // A user choice made HERE is this tab's own selection, so any pending
+    // foreign marker must not suppress persisting it — even when the user
+    // picks the id another tab had just sent.
+    receivedProjectId.current = null;
     setProjectIdState(id);
   }, []);
 
