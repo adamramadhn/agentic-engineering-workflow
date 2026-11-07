@@ -1,74 +1,53 @@
 import { NextResponse } from "next/server";
-import { query } from "@/lib/db";
 import { guardBmadApi } from "@/lib/oauth";
+import { listProviders, providerErrorResponse, registerProvider } from "@/lib/providers";
 
+/**
+ * GET /api/llm-providers — the `awm_provider_list` tool.
+ *
+ * Read-only, and honest about emptiness: an empty registry answers `[]`. It
+ * used to seed two fabricated providers with invented API keys on first read,
+ * which is the same "fake data presented as live" failure the board had.
+ *
+ * `apiKey` IS returned in clear text, deliberately: the Go client turns it into
+ * `ANTHROPIC_API_KEY`, so redacting it here would break `awm_provider_select`.
+ * The database stores it encrypted — see `src/lib/provider-secrets.ts`.
+ */
 export async function GET(req: Request) {
   const denied = await guardBmadApi(req);
   if (denied) return denied;
   try {
-    const res = await query<{
-      id: string;
-      name: string;
-      provider_type: string;
-      base_url: string;
-      api_key: string;
-      model_id: string;
-      is_team_shared: boolean;
-      registered_by: string;
-    }>(`SELECT * FROM bmad_llm_providers ORDER BY created_at ASC`);
-
-    if (res.rows.length === 0) {
-      // Seed default providers if none exist
-      const defaultProviders = [
-        {
-          id: "prov_team_proxy",
-          name: "Team LiteLLM Gateway",
-          providerType: "proxy",
-          baseUrl: "https://llm-gateway.company.internal/v1",
-          apiKey: "sk-team-shared-token",
-          modelId: "claude-sonnet-5-5",
-          isTeamShared: true,
-          registeredBy: "Lead Architect",
-        },
-        {
-          id: "prov_personal_anthropic",
-          name: "Personal Anthropic Direct",
-          providerType: "anthropic",
-          baseUrl: "https://api.anthropic.com",
-          apiKey: "sk-ant-api03-personal-token",
-          modelId: "claude-opus-5-5",
-          isTeamShared: false,
-          registeredBy: "Adam Ramadhan",
-        },
-      ];
-
-      for (const p of defaultProviders) {
-        await query(
-          `INSERT INTO bmad_llm_providers
-            (id, name, provider_type, base_url, api_key, model_id, is_team_shared, registered_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           ON CONFLICT (id) DO NOTHING`,
-          [p.id, p.name, p.providerType, p.baseUrl, p.apiKey, p.modelId, p.isTeamShared, p.registeredBy]
-        );
-      }
-
-      return NextResponse.json(defaultProviders);
-    }
-
-    const providers = res.rows.map(row => ({
-      id: row.id,
-      name: row.name,
-      providerType: row.provider_type,
-      baseUrl: row.base_url,
-      apiKey: row.api_key,
-      modelId: row.model_id,
-      isTeamShared: row.is_team_shared,
-      registeredBy: row.registered_by,
-    }));
-
-    return NextResponse.json(providers);
+    return NextResponse.json(await listProviders());
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return providerErrorResponse(err);
+  }
+}
+
+/**
+ * POST /api/llm-providers — register or update a provider.
+ *
+ * Body: `{ id?, name, providerType?, baseUrl, apiKey?, modelId, isTeamShared?,
+ * registeredBy? }`. `apiKey` is required for a NEW provider and optional for an
+ * update, where an absent key keeps the stored one rather than blanking it.
+ */
+export async function POST(req: Request) {
+  const denied = await guardBmadApi(req);
+  if (denied) return denied;
+  try {
+    const body = await req.json().catch(() => null);
+    if (typeof body !== "object" || body === null || Array.isArray(body)) {
+      return NextResponse.json({ error: "A JSON object body is required" }, { status: 400 });
+    }
+    const fields = body as Record<string, unknown>;
+    for (const field of ["id", "name", "providerType", "baseUrl", "apiKey", "modelId", "registeredBy"] as const) {
+      const value = fields[field];
+      if (value !== undefined && value !== null && typeof value !== "string") {
+        return NextResponse.json({ error: `${field} must be a string` }, { status: 400 });
+      }
+    }
+    const provider = await registerProvider(fields);
+    return NextResponse.json(provider, { status: 201 });
+  } catch (err: unknown) {
+    return providerErrorResponse(err);
   }
 }

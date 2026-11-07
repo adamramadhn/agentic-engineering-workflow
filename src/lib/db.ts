@@ -759,7 +759,8 @@ async function bootstrapSchema(client: PoolClient): Promise<void> {
       ('Editor', 'Editor', 'Workspace plus user management, no user deletion',
         '["home.view","ask-ai.view","ask-ai.use","agent-board.view","wiki.view",
           "wiki.create","wiki.update","wiki.comment","watching.view",
-          "users.view","users.create","users.update"]'::jsonb, true),
+          "users.view","users.create","users.update",
+          "providers.view","providers.manage"]'::jsonb, true),
       ('Member', 'Member', 'Workspace view access',
         '["home.view","ask-ai.view","ask-ai.use","agent-board.view","wiki.view",
           "watching.view"]'::jsonb, true)
