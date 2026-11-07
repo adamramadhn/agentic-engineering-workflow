@@ -15,6 +15,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { UserProfileMenu } from "./user-profile-menu";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 import { useActiveProject, workspaceSubtitle } from "./project-context";
+import { useAnnounce } from "./announcement-context";
 import { usePermission } from "./permission-provider";
 import { pageViewPermission } from "@/lib/permissions";
 import { ADMIN_PAGES, WORKSPACE_PAGES, WATCHED_COMPANIES } from "./navigation";
@@ -56,7 +57,8 @@ export function AppSidebar({
   // The workspace list and the active workspace both come from the shared
   // project context — the same state the Agent Board reads its requests from,
   // so choosing here is what the board shows.
-  const { projects, projectId, project, setProjectId } = useActiveProject();
+  const { projects, projectId, project, setProjectId, status: projectStatus, reload } = useActiveProject();
+  const announce = useAnnounce();
 
   const workspaces = projects.map(item => ({
     id: item.id,
@@ -70,9 +72,18 @@ export function AppSidebar({
 
   const handleSwitchWorkspace = (id: string) => {
     const next = projects.find(item => item.id === id);
+    // Clearing the active row is not a switch — there is nothing to tell the
+    // user about, and announcing an empty name would be noise.
     if (!next || next.id === projectId) return;
     setProjectId(next.id);
-    toast.success(`Switched workspace to ${next.name}`);
+    // One sentence, two destinations. Sonner already exposes its own
+    // `aria-live`, but a toast disappears after a few seconds (and a second
+    // identical toast can replace the first before it is read); the shell's
+    // region persists, so the sentence is still there when the reader reaches
+    // it, and every write is re-announced even if the text is unchanged.
+    const sentence = `Beralih ke workspace ${next.name}`;
+    toast.success(sentence);
+    announce(`${sentence}.`);
   };
 
   // Permission-filtered nav: mobile and desktop maps both render this list, so
@@ -101,7 +112,7 @@ export function AppSidebar({
         <div className="min-h-0 w-full flex-1 overflow-y-auto scrollbar-none">
           {/* Workspace Brand Row with Close Button */}
           <div className="flex h-8 w-full items-center justify-between px-1">
-            <WorkspaceSwitcher workspaces={workspaces} value={currentWorkspaceId} onChange={handleSwitchWorkspace} onCreate={() => toast.info("Workspace creation is not available in this demo")} />
+            <WorkspaceSwitcher workspaces={workspaces} value={currentWorkspaceId} onChange={handleSwitchWorkspace} status={projectStatus} onRetry={reload} />
 
             <button
               type="button"
@@ -231,7 +242,7 @@ export function AppSidebar({
               isCollapsed ? "justify-center px-0" : "justify-between px-1"
             }`}
           >
-            <WorkspaceSwitcher workspaces={workspaces} value={currentWorkspaceId} onChange={handleSwitchWorkspace} onCreate={() => toast.info("Workspace creation is not available in this demo")} collapsed={isCollapsed} />
+            <WorkspaceSwitcher workspaces={workspaces} value={currentWorkspaceId} onChange={handleSwitchWorkspace} collapsed={isCollapsed} status={projectStatus} onRetry={reload} />
 
             {/* Collapse Trigger Button on Desktop */}
             {!isCollapsed && (

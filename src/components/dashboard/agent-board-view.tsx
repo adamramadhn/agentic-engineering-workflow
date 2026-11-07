@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, type ReactNode } from "react";
 import { AgentBoard } from "./agent-board";
 import {
   bmadTaskToAgentTask,
@@ -28,6 +28,7 @@ import { SegmentedControl } from "@/components/ui/segmented-control-clean";
 import { apiFetch } from "@/lib/api";
 import type { BMadAgentTreeNode, BMadTaskItem } from "@/lib/bmad";
 import { useActiveProject } from "./project-context";
+import { useAnnounce } from "./announcement-context";
 import "./search-filter-controls.css";
 
 /** `ProjectSnapshot` (and the `LoadState` halves it carries) lives in
@@ -78,6 +79,34 @@ function parseTree(body: unknown): WorktreeNode | null {
   return bmadNodeToWorktreeNode(body as BMadAgentTreeNode);
 }
 
+/** The Worktree tab's tree source. One option is the workspace's own data and
+ *  the other is the static sample in `worktree-tree-data.ts`, so the control is
+ *  named for what it selects — calling both "contoh" would mislabel the live
+ *  one. Each label says which is which before the choice is made. */
+const WORKTREE_SOURCE_LIVE = "Pohon BMad langsung · database";
+const WORKTREE_SOURCE_DEMO = "Contoh · Halaman harga · 3 cabang";
+
+/** One notice for every state inside the board panels. Three grey blocks that
+ *  each picked their own role and padding drifted apart (status/status/note,
+ *  py-6/py-8/py-4); `tone` is now the only thing a caller chooses. */
+function BoardNotice({ tone, children, describeId }: {
+  tone: "status" | "sample";
+  children: ReactNode;
+  /** When set, the notice is a description rather than an announcement. */
+  describeId?: string;
+}) {
+  return (
+    <p
+      {...(describeId ? { id: describeId } : {})}
+      {...(tone === "status" ? { role: "status" } : {})}
+      data-board-notice={tone}
+      className="rounded-[10px] bg-muted/50 px-3 py-4 text-center text-xs text-muted-foreground"
+    >
+      {children}
+    </p>
+  );
+}
+
 export function AgentBoardView() {
   const { projectId, project, status: projectStatus } = useActiveProject();
   const [snapshot, setSnapshot] = useState<ProjectSnapshot | null>(null);
@@ -89,9 +118,12 @@ export function AgentBoardView() {
     ids: [],
   });
   const [justMoved, setJustMoved] = useState<{ projectId: string; id: string } | null>(null);
-  const [announcement, setAnnouncement] = useState("");
+  // Write-only: the live region itself lives in `DashboardShell`, so a
+  // workspace switch made from any route is announced. `announce` is not a
+  // React setter — writing the same sentence twice is a new announcement.
+  const announce = useAnnounce();
   const [tab, setTab] = useState<"board" | "worktree">("board");
-  const [worktreeSample, setWorktreeSample] = useState("live");
+  const [worktreeSource, setWorktreeSource] = useState("live");
 
   const current = snapshot && snapshot.projectId === projectId ? snapshot : null;
   const tasks = current?.tasks ?? [];
@@ -243,7 +275,7 @@ export function AgentBoardView() {
     });
     closeCard(owner, id);
     setJustMoved({ projectId: owner, id });
-    setAnnouncement(`${task.title} disetujui dan dialihkan ke Running.`);
+    announce(`${task.title} disetujui dan dialihkan ke Running.`);
 
     // Persist to the active workspace's project — the same one the board shows.
     try {
@@ -264,7 +296,7 @@ export function AgentBoardView() {
     } catch (err) {
       console.error("[BMad Monitor] Gagal memperbarui status approval:", err);
       void loadProjectData(owner);
-      setAnnouncement(`Gagal menyetujui ${task.title}. Perubahan dibatalkan.`);
+      announce(`Gagal menyetujui ${task.title}. Perubahan dibatalkan.`);
     }
   };
 
@@ -288,7 +320,7 @@ export function AgentBoardView() {
       ],
     });
     closeCard(owner, id);
-    setAnnouncement(`${task.title} ditolak.`);
+    announce(`${task.title} ditolak.`);
 
     // Persist to the active workspace's project — the same one the board shows.
     try {
@@ -307,7 +339,7 @@ export function AgentBoardView() {
     } catch (err) {
       console.error("[BMad Monitor] Gagal menolak task:", err);
       void loadProjectData(owner);
-      setAnnouncement(`Gagal menolak ${task.title}. Perubahan dibatalkan.`);
+      announce(`Gagal menolak ${task.title}. Perubahan dibatalkan.`);
     }
   };
 
@@ -402,11 +434,7 @@ export function AgentBoardView() {
           hidden={tab !== "board"}
           className="mt-2 min-w-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
-          {showEmptyMessage && (
-            <p role="status" className="mb-2 rounded-[10px] bg-muted/50 px-3 py-6 text-center text-xs text-muted-foreground">
-              {emptyMessage}
-            </p>
-          )}
+          {showEmptyMessage && <div className="mb-2"><BoardNotice tone="status">{emptyMessage}</BoardNotice></div>}
           {tab === "board" && (
             <AgentBoard
               tasks={tasks}
@@ -432,52 +460,57 @@ export function AgentBoardView() {
         >
           <div className="search-filter-controls mb-4">
             <Popover>
-              <PopoverTrigger render={<Button size="lg" variant="secondary" className="search-filter-trigger" icon={<Filter />} aria-label="Demo scenario" />}>
-                {worktreeSample === "live" ? "BMad live tree · database" : "Pricing page · 3 branches"}
+              <PopoverTrigger render={<Button size="lg" variant="secondary" className="search-filter-trigger" icon={<Filter />} aria-label="Sumber pohon Worktree" />}>
+                {worktreeSource === "live" ? WORKTREE_SOURCE_LIVE : WORKTREE_SOURCE_DEMO}
               </PopoverTrigger>
               <PopoverContent unstyled align="start" className="search-filter-popover">
-                <PopoverTitle className="sr-only">Choose demo scenario</PopoverTitle>
-                <FilterMenu title="Demo scenario" selectionMode="single"
-                  groups={[{ id: "scenario", label: "Scenario", options: [
-                    { id: "live", label: "BMad live tree · database" },
-                    { id: "pricing", label: "Pricing page · 3 branches" },
+                <PopoverTitle className="sr-only">Pilih sumber pohon Worktree</PopoverTitle>
+                <FilterMenu title="Sumber pohon" selectionMode="single"
+                  groups={[{ id: "scenario", label: "Sumber", options: [
+                    { id: "live", label: WORKTREE_SOURCE_LIVE },
+                    { id: "pricing", label: WORKTREE_SOURCE_DEMO },
                   ] }]}
-                  value={{ scenario: [worktreeSample] }}
-                  onChange={value => { if (value.scenario?.[0]) setWorktreeSample(value.scenario[0]); }} />
+                  value={{ scenario: [worktreeSource] }}
+                  onChange={value => { if (value.scenario?.[0]) setWorktreeSource(value.scenario[0]); }} />
               </PopoverContent>
             </Popover>
           </div>
 
-          {tab === "worktree" && (worktreeSample === "live"
+          {tab === "worktree" && (worktreeSource === "live"
             ? (
               <>
                 {/* Rendered ABOVE the tree, not instead of it: when the last
                     sync succeeded and this one failed, the tree on screen is
                     stale and the user must be told so. */}
                 {treeState === "error" && (
-                  <p role="status" className="mb-2 rounded-[10px] bg-muted/50 px-3 py-6 text-center text-xs text-muted-foreground">
-                    {worktreeEmptyMessage}
-                  </p>
+                  <div className="mb-2"><BoardNotice tone="status">{worktreeEmptyMessage}</BoardNotice></div>
                 )}
                 {worktreeRun
                   // Keyed by project so the tree's open/focus state resets on a switch.
                   ? <WorktreeTree key={`live-${projectId ?? "none"}`} run={worktreeRun} />
-                  : treeState !== "error" && (
-                    <p role="status" className="rounded-[10px] bg-muted/50 px-3 py-8 text-center text-xs text-muted-foreground">
-                      {worktreeEmptyMessage}
-                    </p>
-                  )}
+                  : treeState !== "error" && <BoardNotice tone="status">{worktreeEmptyMessage}</BoardNotice>}
               </>
             )
-            : <WorktreeTree key={`pricing-${projectId ?? "none"}`} run={demoWorktreeRun} />)}
+            : (
+              // The tree's container describes itself with the caveat, so a
+              // screen reader reading the tree meets the label too — a sibling
+              // `<p>` would be skipped by anyone navigating straight to the tree.
+              <section aria-label="Pohon contoh" aria-describedby="worktree-sample-note">
+                <div className="mb-2">
+                  <BoardNotice tone="sample" describeId="worktree-sample-note">
+                    {project
+                      ? "Data contoh, bukan data database. Pohon ini hanya untuk melihat tampilan dan tidak berasal dari workspace " + project.name + "."
+                      : "Data contoh, bukan data database. Pohon ini hanya untuk melihat tampilan; belum ada workspace aktif yang bisa menjadi sumbernya."}
+                  </BoardNotice>
+                </div>
+                <WorktreeTree key={`pricing-${projectId ?? "none"}`} run={demoWorktreeRun} />
+              </section>
+            ))}
           <p className="mt-4 text-xs text-muted-foreground">
             Pohon agen BMad Monitor real-time · Metrik Token Usage (input, output, cache) dilaporkan secara otomatis oleh sub-agent.
           </p>
         </div>
       </div>
-      <p role="status" className="sr-only">
-        {announcement}
-      </p>
     </section>
   );
 }

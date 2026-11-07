@@ -11,6 +11,12 @@ import {
 } from "react";
 import { apiFetch } from "@/lib/api";
 
+/** Where the project list stands. `"error"` means the list could not be read —
+ *  not that there are no projects. Exported so every consumer of the status
+ *  (`WorkspaceSwitcher`, the board) shares one union: a fourth state added
+ *  here must fail to typecheck at each consumer rather than fall through. */
+export type ProjectStatus = "loading" | "ready" | "error";
+
 /** The subset of `GET /api/projects` the dashboard actually consumes. */
 export interface WorkspaceProject {
   id: string;
@@ -26,7 +32,7 @@ interface ProjectContextValue {
   projectId: string | null;
   project: WorkspaceProject | null;
   /** `"error"` means the list could not be read — not that there are no projects. */
-  status: "loading" | "ready" | "error";
+  status: ProjectStatus;
   setProjectId(id: string): void;
   reload(): void;
 }
@@ -115,7 +121,7 @@ export function workspaceSubtitle(project: WorkspaceProject): string {
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [projectId, setProjectIdState] = useState<string | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [status, setStatus] = useState<ProjectStatus>("loading");
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {

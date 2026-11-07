@@ -11,6 +11,7 @@ import { CommandPalette } from "./command-palette";
 import { ThemeToggle } from "./theme-toggle";
 import { PermissionProvider, usePermission } from "./permission-provider";
 import { ProjectProvider } from "./project-context";
+import { AnnouncementProvider } from "./announcement-context";
 import { ALL_PAGES, workspaceHref, type WorkspaceRoute } from "./navigation";
 
 function DashboardContent({ route, children }: { route: WorkspaceRoute; children: ReactNode }) {
@@ -81,11 +82,16 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           between the sidebar's switcher and the page content (Agent Board),
           so it must live above both. */}
       <ProjectProvider>
-        <SidebarProvider defaultOpen className="flex h-dvh w-full overflow-hidden bg-[#f5f5f5] dark:bg-[#09090b]">
-          <AppSidebar currentRoute={route} onNavigate={handleNavigate} onOpenCommand={() => setIsCommandOpen(true)} />
-          <DashboardContent route={route}>{children}</DashboardContent>
-          <CommandPalette open={isCommandOpen} onOpenChange={setIsCommandOpen} onNavigate={handleNavigate} />
-        </SidebarProvider>
+        {/* Above the sidebar and the page content too: a workspace switch is
+            announced through the Agent Board's live region, and the sidebar
+            that performs the switch is a sibling of that board. */}
+        <AnnouncementProvider>
+          <SidebarProvider defaultOpen className="flex h-dvh w-full overflow-hidden bg-[#f5f5f5] dark:bg-[#09090b]">
+            <AppSidebar currentRoute={route} onNavigate={handleNavigate} onOpenCommand={() => setIsCommandOpen(true)} />
+            <DashboardContent route={route}>{children}</DashboardContent>
+            <CommandPalette open={isCommandOpen} onOpenChange={setIsCommandOpen} onNavigate={handleNavigate} />
+          </SidebarProvider>
+        </AnnouncementProvider>
       </ProjectProvider>
     </PermissionProvider>
   );
