@@ -60,6 +60,26 @@ The script boots a reference database single-process, then N (default 8,
 boot fails or if the resulting catalog, `bmad_projects` or `roles` differ from
 the reference. CI runs it (`npm run test:multi-instance` step) after `verify`.
 
+### Verifying the MCP client contract
+
+```bash
+# the binary lives in the other repo
+cd ../bmad-monitor-mcp && go build -o /tmp/bmad-monitor ./cmd/bmad-monitor && cd -
+npm run test:mcp -- --binary /tmp/bmad-monitor
+```
+
+`scripts/verify-mcp-tools.mjs` drives the real binary over stdio against its own
+scratch database and an isolated `HOME`, then asserts the database after each
+write: `awm_project_init`, `awm_context_report`, `awm_agent_progress`,
+`awm_task_create_batch`, `awm_task_update`, `awm_task_wait_approval`,
+`awm_project_list`.
+
+It is a **manual** gate on purpose — it needs a second repository and a Go
+toolchain, so it is not part of `npm run verify`. It refuses to run (exit 2)
+when the binary, the production build, or the port is not available, rather than
+passing without testing anything, and it cleans up on failure and on
+SIGINT/SIGTERM.
+
 ## Secrets at rest
 
 - **Provider API keys** are encrypted with AES-256-GCM under a key derived from
